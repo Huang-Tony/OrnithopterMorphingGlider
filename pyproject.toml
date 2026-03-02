@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "morphing-glider"
+version = "1.0.0"
+description = "6DOF morphing glider simulation with RL-based yaw control via differential wing morphing"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "gymnasium>=0.29.0",
+    "stable-baselines3>=2.1.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+    "matplotlib>=3.7.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+include = ["morphing_glider*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

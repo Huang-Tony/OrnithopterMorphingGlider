@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output artifacts
+morphing_glider_models/
+morphing_glider_figures/
+tb_baseline/
+tb_curriculum/
+tb_curriculum_residual/
+morphing_glider_results.json
+reproducibility_report.json
+*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Tools
+.claude/
+.pytest_cache/
