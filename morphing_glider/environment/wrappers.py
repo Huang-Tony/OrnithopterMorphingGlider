@@ -7,11 +7,12 @@ from morphing_glider.environment.env import YAW_REF_MAX
 
 
 class ResidualHeuristicWrapper(gym.Wrapper):
-    def __init__(self, env, *, heuristic, residual_limit=0.08):
+    def __init__(self, env, *, heuristic, residual_limit=0.08, residual_smooth_alpha=0.7):
         super().__init__(env); self.heuristic = heuristic
         self.action_space = self.env.action_space; self.observation_space = self.env.observation_space
         self.residual_limit = np.full((6,), 0.08, dtype=float); self.set_residual_limit(residual_limit)
-        self._last_obs = None
+        self.residual_smooth_alpha = float(np.clip(residual_smooth_alpha, 0.0, 1.0))
+        self._last_obs = None; self._last_residual = np.zeros(6, dtype=float)
 
     def set_residual_limit(self, lim):
         lim = np.asarray(lim, dtype=float)
@@ -21,17 +22,21 @@ class ResidualHeuristicWrapper(gym.Wrapper):
     def reset(self, *, seed=None, options=None):
         obs, info = self.env.reset(seed=seed, options=options)
         self._last_obs = np.array(obs, copy=True); self.heuristic.reset()
+        self._last_residual = np.zeros(6, dtype=float)
         info = dict(info); info["residual_mode"] = True; info["residual_limit"] = self.residual_limit.copy()
         return obs, info
 
     def step(self, action):
         res = np.clip(np.asarray(action, dtype=float).reshape(-1), -self.residual_limit, self.residual_limit)
+        # Apply exponential moving average smoothing to residual actions
+        res_smooth = self.residual_smooth_alpha * res + (1.0 - self.residual_smooth_alpha) * self._last_residual
+        self._last_residual = np.array(res_smooth, copy=True)
         h, _ = self.heuristic.predict(self._last_obs, deterministic=True)
-        a = np.clip(np.asarray(h, dtype=float).reshape(-1) + res, self.env.action_space.low, self.env.action_space.high)
+        a = np.clip(np.asarray(h, dtype=float).reshape(-1) + res_smooth, self.env.action_space.low, self.env.action_space.high)
         obs, reward, terminated, truncated, info = self.env.step(a)
         self._last_obs = np.array(obs, copy=True)
         info = dict(info); info["heur_action_norm"] = float(np.linalg.norm(h))
-        info["res_action_norm"] = float(np.linalg.norm(res))
+        info["res_action_norm"] = float(np.linalg.norm(res_smooth))
         info["total_action_norm"] = float(np.linalg.norm(a)); info["residual_limit"] = self.residual_limit.copy()
         return obs, float(reward), terminated, truncated, info
 

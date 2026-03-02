@@ -142,6 +142,17 @@ def summarize_metrics(metrics, *, label, ci_method="bca", ci=95.0, print_cost_te
     fail = arr("failure"); fail_rate = float(np.nanmean(fail)) if np.isfinite(fail).any() else float("nan")
     out["failure_rate"] = fail_rate
     print(f"Failure rate: {fail_rate*100:.1f}%")
+
+    # Failure mode breakdown
+    term_att = arr("term_attitude"); term_stall = arr("term_stall")
+    term_gnd = arr("term_ground"); term_nan = arr("term_nan")
+    n_att = int(np.nansum(term_att)) if np.isfinite(term_att).any() else 0
+    n_stall = int(np.nansum(term_stall)) if np.isfinite(term_stall).any() else 0
+    n_gnd = int(np.nansum(term_gnd)) if np.isfinite(term_gnd).any() else 0
+    n_nan = int(np.nansum(term_nan)) if np.isfinite(term_nan).any() else 0
+    if n_att + n_stall + n_gnd + n_nan > 0:
+        print(f"  Failure modes: attitude={n_att}, stall={n_stall}, ground={n_gnd}, nan={n_nan}")
+
     x = arr("rms_yaw_horizon"); mean, lo, hi = bootstrap_mean_ci_bca(x, ci=ci, seed=123)
     m_raw, s_raw, n_raw = _finite_mean_std(x)
     print(f"Yaw RMS@H: {m_raw:.4f} ± {s_raw:.4f} CI[{lo:.4f}, {hi:.4f}] (n={n_raw})")
@@ -150,8 +161,13 @@ def summarize_metrics(metrics, *, label, ci_method="bca", ci=95.0, print_cost_te
     se_valid = [float(m.get("rms_yaw_steady", np.nan)) for m in metrics
                 if int(m.get("T",0)) >= MIN_EPISODE_SURVIVAL_STEPS and np.isfinite(m.get("rms_yaw_steady", np.nan))]
     hirmssteady = float(np.percentile(se_valid, 85)) if se_valid else 999.0
+    hirms_p95 = float(np.percentile(se_valid, 95)) if se_valid else 999.0
+    hirms_max = float(np.max(se_valid)) if se_valid else 999.0
     out["hirmssteady"] = hirmssteady
+    out["hirms_p95"] = hirms_p95
+    out["hirms_max"] = hirms_max
     print(f"Gate hirmssteady(p85): {hirmssteady:.4f} (n_valid={len(se_valid)})")
+    print(f"  hirms_p95: {hirms_p95:.4f}, hirms_max: {hirms_max:.4f}")
 
     for k in ["rms_yaw_steady", "rms_yaw_transient", "mean_settle_time", "mean_action_norm",
               "mean_speed", "mean_altitude", "delta_altitude", "mean_power_loss"]:
