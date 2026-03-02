@@ -1,6 +1,6 @@
 """Curriculum training: PhaseSpec, TrainRunResult, and multi-phase SAC training."""
 
-import gc, time
+import copy, gc, time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -154,6 +154,7 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
 
             phase_steps = 0; max_ts = int(phase.max_timesteps); chunk = int(eval_every_steps)
             gate_passed = False; best_steady = float("inf"); best_steady_at = 0; last_stats = None
+            best_hirmssteady = float("inf"); best_policy_state = None; lr_decayed = False
 
             while phase_steps < max_ts:
                 train_steps = int(min(chunk, max_ts - phase_steps))
@@ -164,11 +165,25 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
                 prev_obs_rms = vecnorm.obs_rms if vecnorm else prev_obs_rms
                 last_stats = eval_hard(f"{phase_steps}", phase, residual_limit_eval=phase.residual_limit)
                 current_steady = float(last_stats.get("mean_rms_yaw_steady", np.nan))
+                current_hirmssteady = float(last_stats.get("hirmssteady", np.nan))
                 if np.isfinite(current_steady) and current_steady < best_steady:
                     best_steady = current_steady; best_steady_at = int(phase_steps)
+                if np.isfinite(current_hirmssteady) and current_hirmssteady < best_hirmssteady:
+                    best_hirmssteady = current_hirmssteady
+                    best_policy_state = (
+                        copy.deepcopy(model.actor.state_dict()),
+                        copy.deepcopy(model.critic.state_dict()),
+                        copy.deepcopy(model.critic_target.state_dict()),
+                        copy.deepcopy(vecnorm.obs_rms) if vecnorm else None,
+                    )
+                    print(f"  [BEST] New best hirmssteady={best_hirmssteady:.4f} at step {phase_steps}")
                 if np.isfinite(current_steady) and np.isfinite(best_steady) and best_steady < float("inf"):
                     if current_steady > best_steady * 1.30:
                         print(f"  [REGRESSION WARNING] steady RMS {current_steady:.4f} > 1.30× best {best_steady:.4f}")
+                        if not lr_decayed:
+                            new_lr = float(phase.learning_rate) * 0.5
+                            _set_phase_lr_on_sac(model, new_lr, f"{phase.name}_decay")
+                            lr_decayed = True
                 print(f" [TRAIN] phase_steps={phase_steps}/{max_ts} | wall={wall:.1f}s")
 
                 if phase.target_rms is not None and phase_steps >= int(max(0, phase.min_steps_before_gate)):
@@ -185,6 +200,24 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
                         print(f" [GATE PASS] hirmssteady={hirmssteady:.4f} < target={target:.4f}"); break
                     else:
                         print(f" [GATE FAIL] hirmssteady={hirmssteady:.4f} >= target={target:.4f}")
+
+            # ---- Best-checkpoint restoration ----
+            if not gate_passed and best_policy_state is not None:
+                actor_sd, critic_sd, ct_sd, obs_rms_best = best_policy_state
+                model.actor.load_state_dict(actor_sd)
+                model.critic.load_state_dict(critic_sd)
+                model.critic_target.load_state_dict(ct_sd)
+                if vecnorm is not None and obs_rms_best is not None:
+                    vecnorm.obs_rms = obs_rms_best
+                print(f"  [RESTORE] Restored best checkpoint (hirmssteady={best_hirmssteady:.4f})")
+                last_stats = eval_hard("best_restored", phase, residual_limit_eval=phase.residual_limit)
+                if phase.target_rms is not None:
+                    h_restored = float(last_stats.get("hirmssteady", np.nan))
+                    fr_restored = float(last_stats.get("failure_rate", 1.0))
+                    _max_fail = GATE_MAX_FAILURE_RATE_BY_PHASE.get(phase.name, GATE_MAX_FAILURE_RATE)
+                    if np.isfinite(h_restored) and h_restored < float(phase.target_rms) and fr_restored <= _max_fail:
+                        gate_passed = True
+                        print(f" [GATE PASS via BEST RESTORE] hirmssteady={h_restored:.4f} < target={phase.target_rms:.4f}")
 
             logs["phase_boundaries"].append({"phase": phase.name, "global_steps": int(model.num_timesteps)})
             threshold = float(GATE_OVERRIDE_IMPROVEMENT_THRESHOLD_RESIDUAL if use_residual else GATE_OVERRIDE_IMPROVEMENT_THRESHOLD)

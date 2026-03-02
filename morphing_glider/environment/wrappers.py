@@ -42,7 +42,7 @@ def mild_curriculum_reward_shaper(phase, original_reward, obs, action, info):
     z_asym = float(info.get("z_asym", 0.0))
     turn_gate = float(np.clip(abs(yaw_ref) / YAW_REF_MAX, 0.0, 1.0)); shaped = float(original_reward)
     if name == "basic_yaw":
-        shaped += 0.015 * float(np.tanh(6.0 * np.linalg.norm(action)))
+        pass  # No action-size bonus; avoids conflict with structural penalty
     else:
         shaped += (0.10 * twist) * turn_gate * float(np.clip(-yaw_error * z_asym, -0.20, +0.20))
     return float(np.clip(shaped, -15.0, +8.0))

@@ -54,10 +54,10 @@ def main():
         CURR_EVAL_EVERY = 8_000; CURR_EVAL_EPS = 5; FINAL_EVAL_EPS = EVAL_EPISODES_PER_SEED
     elif MEDIUM_RUN:
         N_ENVS = 6; MAX_STEPS_EP = 200; BASELINE_STEPS = TOTAL_TRAIN_STEPS
-        CURR_EVAL_EVERY = 16_000; CURR_EVAL_EPS = 10; FINAL_EVAL_EPS = EVAL_EPISODES_PER_SEED
+        CURR_EVAL_EVERY = 16_000; CURR_EVAL_EPS = 20; FINAL_EVAL_EPS = EVAL_EPISODES_PER_SEED
     else:
         N_ENVS = 10; MAX_STEPS_EP = 200; BASELINE_STEPS = TOTAL_TRAIN_STEPS
-        CURR_EVAL_EVERY = 50_000; CURR_EVAL_EPS = 15; FINAL_EVAL_EPS = EVAL_EPISODES_PER_SEED
+        CURR_EVAL_EVERY = 50_000; CURR_EVAL_EPS = 25; FINAL_EVAL_EPS = EVAL_EPISODES_PER_SEED
 
     EVAL_SEED_BASE = int(GLOBAL_SEED + 10000)
 
@@ -71,7 +71,7 @@ def main():
                   ramp_steps=1800 if PAPER_RUN else (900 if MEDIUM_RUN else 500),
                   reward_shaper=mild_curriculum_reward_shaper,
                   residual_limit=np.array([0.10, 0.05, 0.06, 0.10, 0.05, 0.06], dtype=float),
-                  learning_rate=3e-4, target_rms=0.45, min_steps_before_gate=12_000,
+                  learning_rate=3e-4, target_rms=0.52, min_steps_before_gate=12_000,
                   roll_pitch_limit_deg=90.0, coupling_scale=0.10, stability_weight=0.08),
         PhaseSpec(name="partial_twist", twist_factor=0.3, rand_scale=0.3,
                   max_timesteps=TOTAL_TRAIN_STEPS,
