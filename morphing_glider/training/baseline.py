@@ -45,7 +45,7 @@ def train_baseline_sac(*, total_timesteps, seed, n_envs, max_steps,
                 roll_pitch_limit_deg=float(phase.roll_pitch_limit_deg),
                 coupling_scale=float(phase.coupling_scale), stability_weight=float(phase.stability_weight))
             stats = summarize_metrics(mets, label=f"EVAL({tag}) baseline | rand={eval_domain_rand_scale}",
-                                      ci_method="bca", print_cost_terms=False)
+                                      ci_method="bca", print_cost_terms=True)
             _standardize_evaltrace_append(logs, tag=str(tag), phase_name=phase.name,
                                           global_steps=int(model.num_timesteps), stats=stats)
             return stats

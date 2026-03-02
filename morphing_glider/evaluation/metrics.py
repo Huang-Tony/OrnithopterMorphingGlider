@@ -134,7 +134,7 @@ def compute_episode_metrics(history, *, horizon_T):
 # Multi-episode summarization
 # ================================================================
 
-def summarize_metrics(metrics, *, label, ci_method="bca", ci=95.0, print_cost_terms=False):
+def summarize_metrics(metrics, *, label, ci_method="bca", ci=95.0, print_cost_terms=True):
     def arr(key): return np.array([m.get(key, float("nan")) for m in metrics])
     out = {"label": label, "n_episodes": int(len(metrics))}
     print("\n" + "="*80); print(f"SUMMARY :: {label}"); print("="*80)
