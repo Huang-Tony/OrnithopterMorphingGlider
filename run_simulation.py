@@ -70,33 +70,40 @@ def main():
                   max_timesteps=TOTAL_TRAIN_STEPS,
                   ramp_steps=1800 if PAPER_RUN else (900 if MEDIUM_RUN else 500),
                   reward_shaper=mild_curriculum_reward_shaper,
-                  residual_limit=np.array([0.05, 0.025, 0.03, 0.05, 0.025, 0.03], dtype=float),
+                  residual_limit=np.array([0.10, 0.05, 0.06, 0.10, 0.05, 0.06], dtype=float),
                   learning_rate=3e-4, target_rms=0.52, min_steps_before_gate=20_000,
                   roll_pitch_limit_deg=90.0, coupling_scale=0.10, stability_weight=0.08),
         PhaseSpec(name="partial_twist", twist_factor=0.3, rand_scale=0.3,
                   max_timesteps=TOTAL_TRAIN_STEPS,
                   ramp_steps=3000 if PAPER_RUN else (1800 if MEDIUM_RUN else 1000),
                   reward_shaper=mild_curriculum_reward_shaper,
-                  residual_limit=np.array([0.05, 0.025, 0.03, 0.05, 0.025, 0.03], dtype=float),
-                  learning_rate=3e-4, target_rms=0.38, min_steps_before_gate=30_000,
+                  residual_limit=np.array([0.10, 0.05, 0.06, 0.10, 0.05, 0.06], dtype=float),
+                  learning_rate=5e-4, target_rms=0.38, min_steps_before_gate=30_000,
                   roll_pitch_limit_deg=88.0, coupling_scale=0.25, stability_weight=0.06),
+        PhaseSpec(name="intermediate_twist", twist_factor=0.45, rand_scale=0.45,
+                  max_timesteps=TOTAL_TRAIN_STEPS,
+                  ramp_steps=3000 if PAPER_RUN else (1800 if MEDIUM_RUN else 1000),
+                  reward_shaper=mild_curriculum_reward_shaper,
+                  residual_limit=np.array([0.12, 0.06, 0.08, 0.12, 0.06, 0.08], dtype=float),
+                  learning_rate=4e-4, target_rms=0.33, min_steps_before_gate=35_000,
+                  roll_pitch_limit_deg=85.0, coupling_scale=0.35, stability_weight=0.055),
         PhaseSpec(name="moderate_twist", twist_factor=0.6, rand_scale=0.6,
                   max_timesteps=TOTAL_TRAIN_STEPS,
                   ramp_steps=3500 if PAPER_RUN else (2000 if MEDIUM_RUN else 1200),
                   reward_shaper=mild_curriculum_reward_shaper,
-                  residual_limit=np.array([0.10, 0.05, 0.06, 0.10, 0.05, 0.06], dtype=float),
-                  learning_rate=3e-4, target_rms=0.28, min_steps_before_gate=40_000,
-                  roll_pitch_limit_deg=82.0, coupling_scale=0.50, stability_weight=0.05),
+                  residual_limit=np.array([0.15, 0.08, 0.10, 0.15, 0.08, 0.10], dtype=float),
+                  learning_rate=4e-4, target_rms=0.28, min_steps_before_gate=40_000,
+                  roll_pitch_limit_deg=84.0, coupling_scale=0.45, stability_weight=0.05),
         PhaseSpec(name="full_twist", twist_factor=1.0, rand_scale=1.0,
                   max_timesteps=TOTAL_TRAIN_STEPS,
                   ramp_steps=4000 if PAPER_RUN else (2500 if MEDIUM_RUN else 1500),
                   reward_shaper=mild_curriculum_reward_shaper,
-                  residual_limit=np.array([0.10, 0.05, 0.06, 0.10, 0.05, 0.06], dtype=float),
+                  residual_limit=np.array([0.20, 0.10, 0.12, 0.20, 0.10, 0.12], dtype=float),
                   learning_rate=2e-4, target_rms=0.20, min_steps_before_gate=50_000,
                   roll_pitch_limit_deg=70.0, coupling_scale=0.90, stability_weight=0.04),
         PhaseSpec(name="raw_finetune", twist_factor=1.0, rand_scale=1.0,
                   max_timesteps=TOTAL_TRAIN_STEPS, ramp_steps=0, reward_shaper=mild_curriculum_reward_shaper,
-                  residual_limit=np.array([0.20, 0.10, 0.12, 0.20, 0.10, 0.12], dtype=float),
+                  residual_limit=np.array([0.25, 0.12, 0.15, 0.25, 0.12, 0.15], dtype=float),
                   learning_rate=1e-4, target_rms=None, min_steps_before_gate=60_000,
                   roll_pitch_limit_deg=65.0, coupling_scale=1.00, stability_weight=0.035),
     ]
@@ -163,6 +170,7 @@ def main():
 
     train_seeds = [GLOBAL_SEED + 100 * s for s in range(int(N_TRAIN_SEEDS))]
     FINAL_EVAL_RPL = float(PHASES[-1].roll_pitch_limit_deg)
+    FINAL_EVAL_RPL_CLASSICAL = 70.0  # Classical controllers evaluated at their design point
     FINAL_EVAL_COUP = 1.0
     FINAL_EVAL_SW = 0.03
 
@@ -200,7 +208,7 @@ def main():
         print("\n[CHECKPOINT VERIFICATION]")
         passed = verify_checkpoint_reproducibility(
             best_rr.model_path,
-            env_factory=lambda: make_env(seed=0, domain_rand_scale=0.0, max_steps=200, for_eval=True),
+            env_factory=lambda: make_env(seed=0, domain_rand_scale=1.0, max_steps=200, for_eval=True),
             n_episodes=5)
         print(f"REPRODUCIBILITY: {'PASS' if passed else 'FAIL'}")
 
@@ -223,7 +231,7 @@ def main():
         )
         from morphing_glider.evaluation.metrics import summarize_metrics
         from morphing_glider.utils.numeric import statistical_power_analysis
-        from morphing_glider.reporting.statistics import print_statistical_evidence_summary
+        from morphing_glider.reporting.statistics import print_statistical_evidence_summary, print_metric_correlations
 
         print(f"\n{'#' * 80}\nFINAL EVALUATION\n{'#' * 80}")
 
@@ -263,7 +271,7 @@ def main():
                 result = summarize_controller_over_episodes_bca(
                     ctrl, label=cname, domain_scale=ds, max_steps=MAX_STEPS_EP,
                     eval_episodes=FINAL_EVAL_EPS, eval_seed_base=EVAL_SEED_BASE,
-                    roll_pitch_limit_deg=FINAL_EVAL_RPL, coupling_scale=FINAL_EVAL_COUP,
+                    roll_pitch_limit_deg=FINAL_EVAL_RPL_CLASSICAL, coupling_scale=FINAL_EVAL_COUP,
                     stability_weight=FINAL_EVAL_SW, ci=95.0, return_raw_metrics=True)
                 final_eval_blocks.append((cname, tag, result))
 
@@ -279,6 +287,21 @@ def main():
                     for m in seed_mets:
                         vals.append(float(m.get("rms_yaw_horizon", np.nan)))
                 return np.array(vals)
+            return np.array([])
+
+        def _rmsh_per_seed_means(block):
+            """Per-seed mean RMS@H for hierarchical paired tests."""
+            seed_eps = block.get("seed_episodes", {})
+            if seed_eps:
+                means = []
+                for seed_mets in seed_eps.values():
+                    vals = [float(m.get("rms_yaw_horizon", np.nan)) for m in seed_mets]
+                    means.append(float(np.nanmean(vals)))
+                return np.array(means)
+            raw = block.get("raw_metrics", [])
+            if raw:
+                vals = [float(m.get("rms_yaw_horizon", np.nan)) for m in raw]
+                return np.array([float(np.nanmean(vals))])
             return np.array([])
 
         paired_test_cache["controller_vs_heuristic"] = {}
@@ -317,6 +340,34 @@ def main():
                     stability_weight=FINAL_EVAL_SW, residual_limit=res_lim, ci=95.0)
                 final_eval_blocks.append((algo, tag, summ))
 
+        # Paired tests: baseline vs curriculum/residual_curriculum (seed-level)
+        paired_test_cache["baseline_vs_trained"] = {}
+        for cond in ["nominal", "randomized"]:
+            base_block = next((b for a, c, b in final_eval_blocks if a == "baseline" and c == cond), None)
+            if base_block is None:
+                continue
+            x = _rmsh_per_seed_means(base_block)
+            if x.size < 2:
+                continue
+            pvals = {}; test_details = {}
+            for algo_name in ["curriculum", "residual_curriculum"]:
+                other_block = next((b for a, c, b in final_eval_blocks if a == algo_name and c == cond), None)
+                if other_block is None:
+                    continue
+                y = _rmsh_per_seed_means(other_block)
+                n_pair = min(x.size, y.size)
+                if n_pair < 2:
+                    continue
+                res = paired_tests(x[:n_pair], y[:n_pair])
+                p = res.get("p_wilcoxon", np.nan)
+                if not np.isfinite(p):
+                    p = res.get("p_ttest", np.nan)
+                key = f"baseline_vs_{algo_name}"
+                pvals[key] = p; test_details[key] = res
+            if pvals:
+                corr = holm_bonferroni(pvals, alpha=0.05)
+                paired_test_cache["baseline_vs_trained"][cond] = {"holm_bonferroni": corr, **test_details}
+
         print_final_eval_table(final_eval_blocks, ci=95.0)
 
         power_result = statistical_power_analysis(
@@ -324,6 +375,7 @@ def main():
             n_seeds=N_TRAIN_SEEDS, n_episodes_per_seed=EVAL_EPISODES_PER_SEED)
         print(f"\n[POWER ANALYSIS] {power_result}")
         print_statistical_evidence_summary(paired_test_cache, power_result, final_eval_blocks)
+        print_metric_correlations(final_eval_blocks)
 
         # ---- Interpretability ----
         _run_interpretability(train_runs, heuristic, pid, gs_pid, MAX_STEPS_EP, FINAL_EVAL_EPS,
@@ -351,20 +403,157 @@ def main():
             ablation_results[cond_name] = result
         plot_ablation_summary(ablation_results)
 
-    # ---- Demo overlay ----
+    # ---- Demo overlay & visualization ----
     if RUN_DEMO_OVERLAY:
-        from morphing_glider.training.infrastructure import make_env
+        from morphing_glider.training.infrastructure import make_env, load_vecnorm_for_eval
         from morphing_glider.evaluation.metrics import run_episode
-        from morphing_glider.utils.visualization import plot_yaw_overlay
+        from morphing_glider.utils.visualization import (
+            plot_yaw_overlay, plot_yaw_overlay_grid, plot_attitude_stability,
+            plot_action_decomposition, plot_performance_comparison,
+            plot_training_losses,
+        )
+        from morphing_glider.environment.wrappers import ResidualHeuristicWrapper
+        from stable_baselines3 import SAC
+
+        print(f"\n{'#' * 80}\nDEMO OVERLAY & VISUALIZATION\n{'#' * 80}")
 
         demo_seed = int(GLOBAL_SEED + 123)
-        env_demo = make_env(seed=demo_seed, domain_rand_scale=0.0, max_steps=MAX_STEPS_EP,
-                            for_eval=True, roll_pitch_limit_deg=FINAL_EVAL_RPL,
-                            coupling_scale=FINAL_EVAL_COUP, stability_weight=FINAL_EVAL_SW)
-        env_demo = ProgressiveTwistWrapper(env_demo, phase={"name": "demo"}, twist_factor=1.0, reward_shaper=None)
-        histories = [run_episode(env_demo, heuristic, deterministic=True, seed=demo_seed)]
-        labels = ["Heuristic"]
-        plot_yaw_overlay(histories, labels, title="Yaw tracking overlay (nominal)")
+
+        def _make_demo_env(use_residual=False):
+            env = make_env(seed=demo_seed, domain_rand_scale=0.0, max_steps=MAX_STEPS_EP,
+                           for_eval=True, roll_pitch_limit_deg=FINAL_EVAL_RPL,
+                           coupling_scale=FINAL_EVAL_COUP, stability_weight=FINAL_EVAL_SW)
+            if use_residual:
+                heur_r = VirtualTendonHeuristicController(
+                    yaw_rate_max=max(abs(v) for v in DEFAULT_YAW_TARGETS))
+                env = ResidualHeuristicWrapper(
+                    env, heuristic=heur_r, residual_limit=PHASES[-1].residual_limit)
+            env = ProgressiveTwistWrapper(
+                env, phase={"name": "demo"}, twist_factor=1.0, reward_shaper=None)
+            return env
+
+        histories = []
+        labels = []
+
+        # --- Classical controllers ---
+        # Ensure PID/LQR/MPC/GS-PID are available (may already exist from eval section)
+        _K_MZ = 2.128
+        try:
+            if isinstance(aero_calib_out, dict):
+                _mz = float(aero_calib_out.get("Mz_total", np.nan))
+                _dx = float(aero_calib_out.get("dx_ref", np.nan))
+                if np.isfinite(_mz) and np.isfinite(_dx) and abs(_dx) > 1e-6:
+                    _K_MZ = abs(_mz) / abs(_dx)
+        except Exception:
+            pass
+
+        try:
+            _demo_pid = pid
+        except NameError:
+            _demo_pid = PIDYawController(dt=DT, action_scale=0.15)
+            try:
+                _demo_pid.auto_tune_from_aero(
+                    Izz=float(NOMINAL_PHYS["Izz"]), K_mz_per_dx=float(_K_MZ))
+            except Exception:
+                pass
+        try:
+            _demo_lqr = lqr
+        except NameError:
+            _demo_lqr = LQRYawController(
+                Izz=float(NOMINAL_PHYS["Izz"]), K_mz_per_dx=float(_K_MZ),
+                Q=1.0, R=0.1, dt=DT, action_scale=0.15)
+        try:
+            _demo_mpc = mpc
+        except NameError:
+            _demo_mpc = LinearMPCYawController(
+                Izz=float(NOMINAL_PHYS["Izz"]), K_mz_per_dx=float(_K_MZ),
+                d_yaw=float(NOMINAL_PHYS["d_yaw"]), dt=DT, action_scale=0.15)
+        try:
+            _demo_gs_pid = gs_pid
+        except NameError:
+            _demo_gs_pid = GainScheduledPIDYawController(dt=DT, action_scale=0.15)
+            try:
+                _demo_gs_pid.auto_tune_from_aero(
+                    Izz=float(NOMINAL_PHYS["Izz"]), K_mz_per_dx=float(_K_MZ))
+            except Exception:
+                pass
+
+        demo_classical = [
+            ("Heuristic", heuristic),
+            ("PID", _demo_pid),
+            ("LQR", _demo_lqr),
+            ("MPC", _demo_mpc),
+            ("GS-PID", _demo_gs_pid),
+        ]
+
+        for name, ctrl in demo_classical:
+            try:
+                env_c = _make_demo_env()
+                hist = run_episode(env_c, ctrl, deterministic=True, seed=demo_seed)
+                histories.append(hist)
+                labels.append(name)
+            except Exception as exc:
+                print(f"[DEMO] {name} failed: {exc!r}")
+
+        # --- Trained RL models ---
+        _pretty = {"baseline": "Baseline SAC", "curriculum": "Curriculum SAC",
+                    "residual_curriculum": "Residual SAC"}
+        for algo in ["baseline", "curriculum", "residual_curriculum"]:
+            runs = [rr for rr in train_runs if rr.algo_name == algo]
+            if not runs:
+                continue
+            rr = runs[0]
+            try:
+                demo_model = SAC.load(rr.model_path, device=DEVICE)
+                demo_vecnorm = load_vecnorm_for_eval(rr.vecnorm_path, max_steps=MAX_STEPS_EP)
+                demo_ctrl = SB3Controller(
+                    demo_model,
+                    obs_rms=(demo_vecnorm.obs_rms if demo_vecnorm else None),
+                    clip_obs=(demo_vecnorm.clip_obs if demo_vecnorm else 10.0))
+                env_t = _make_demo_env(use_residual=(algo == "residual_curriculum"))
+                hist = run_episode(env_t, demo_ctrl, deterministic=True, seed=demo_seed)
+                histories.append(hist)
+                labels.append(_pretty.get(algo, algo))
+                del demo_model; gc.collect()
+            except Exception as exc:
+                print(f"[DEMO] {algo} failed: {exc!r}")
+
+        # --- Generate figures ---
+        if histories:
+            # 1. Main yaw overlay (all agents on one plot)
+            plot_yaw_overlay(histories, labels,
+                             title="Yaw tracking overlay — all controllers (nominal)")
+            # 2. Per-controller grid
+            plot_yaw_overlay_grid(histories, labels)
+            # 3. Attitude stability
+            plot_attitude_stability(histories, labels)
+            # 4. Action decomposition for best trained agent
+            for target in ["Curriculum SAC", "Baseline SAC", "Residual SAC"]:
+                if target in labels:
+                    plot_action_decomposition(
+                        histories[labels.index(target)], label=target)
+                    break
+
+        # 5. Performance comparison from final eval
+        if final_eval_blocks:
+            plot_performance_comparison(final_eval_blocks, condition="nominal",
+                                        save_path="performance_comparison_nominal.png")
+            plot_performance_comparison(final_eval_blocks, condition="randomized",
+                                        save_path="performance_comparison_randomized.png")
+
+        # 6. Training loss / gradient curves from TensorBoard
+        if train_runs:
+            _tb_map = {"baseline": "tb_baseline", "curriculum": "tb_curriculum",
+                       "residual_curriculum": "tb_curriculum_residual"}
+            tb_dirs = []
+            tb_labels = []
+            for algo in ["baseline", "curriculum", "residual_curriculum"]:
+                d = _tb_map.get(algo, "")
+                if os.path.isdir(d):
+                    tb_dirs.append(d)
+                    tb_labels.append(_pretty.get(algo, algo))
+            if tb_dirs:
+                plot_training_losses(tb_dirs, tb_labels)
 
     # ---- Reproducibility report ----
     from morphing_glider.reporting.reproducibility import ReproducibilityReport
@@ -382,6 +571,10 @@ def main():
         "train_runs": [{"algo": rr.algo_name, "seed": rr.train_seed, "model_path": rr.model_path}
                        for rr in train_runs],
         "paired_tests": paired_test_cache,
+        "final_eval": [(algo, cond, {k: v for k, v in block.items()
+                        if k not in ("raw_metrics", "seed_episodes")})
+                       for algo, cond, block in final_eval_blocks],
+        "power_analysis": power_result if 'power_result' in dir() else {},
         "robustness": robustness_results,
         "ablation": {k: {"summaries": v.get("summaries", {})} for k, v in ablation_results.items()},
         "reproducibility": repro_report,
@@ -518,12 +711,12 @@ def _run_interpretability(train_runs, heuristic, pid, gs_pid,
         kan_device = torch.device(DEVICE)
         kan_student = KANPolicyNetwork(
             obs_dim=OBS_DIM, action_dim=6,
-            hidden_dim=24 if FAST_DEV_RUN else 32,
-            n_bases=5 if FAST_DEV_RUN else 6).to(kan_device)
+            hidden_dim=24 if FAST_DEV_RUN else (48 if MEDIUM_RUN else 64),
+            n_bases=5 if FAST_DEV_RUN else (8 if MEDIUM_RUN else 10)).to(kan_device)
         dagger = DAggerDistillation(
             expert=interp_ctrl, student=kan_student,
-            n_iterations=3 if FAST_DEV_RUN else (6 if MEDIUM_RUN else 8),
-            episodes_per_iter=2 if FAST_DEV_RUN else 3,
+            n_iterations=3 if FAST_DEV_RUN else (10 if MEDIUM_RUN else 15),
+            episodes_per_iter=2 if FAST_DEV_RUN else (5 if MEDIUM_RUN else 8),
             max_steps=MAX_STEPS_EP, mix_probability=0.9, beta_decay=0.8, learning_rate=5e-4)
         dagger_history = dagger.train(verbose=True)
         DAggerDistillation.plot_training_history(

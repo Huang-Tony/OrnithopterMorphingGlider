@@ -186,6 +186,7 @@ class MorphingGliderEnv6DOF(gym.Env):
         obs[23:26] = self.p3_cmd_R; obs[26:29] = self.p3_cmd_L
         obs[29:32] = self.spar_R.p1; obs[32:35] = self.spar_R.p2
         obs[35:38] = self.spar_L.p1; obs[38:41] = self.spar_L.p2
+        np.clip(obs, -1e6, 1e6, out=obs)
         return obs.astype(np.float32)
 
     def reset(self, seed=None, options=None):
@@ -252,6 +253,7 @@ class MorphingGliderEnv6DOF(gym.Env):
         m = float(self.phys.get("mass", 0.5)); g = float(self.phys.get("g", 9.81))
         F_world = R_bw @ F_body; gravity = np.array([0.0, 0.0, -m * g])
         self.vel_world += (F_world + gravity) / max(1e-9, m) * self.dt
+        self.vel_world = np.clip(self.vel_world, -100.0, 100.0)
         self.pos_world += self.vel_world * self.dt
         roll, pitch, yaw = quat_to_euler_xyz(self.q)
         yaw_rate = float(self.omega[2]); speed = float(np.linalg.norm(v_rel_world))

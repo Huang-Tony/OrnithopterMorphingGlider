@@ -70,7 +70,7 @@ class TestFiniteMeanStd:
     def test_normal_values(self):
         mean, std = finite_mean_std([1.0, 2.0, 3.0])
         np.testing.assert_allclose(mean, 2.0, atol=1e-10)
-        expected_std = math.sqrt(((1-2)**2 + (2-2)**2 + (3-2)**2) / 3)
+        expected_std = math.sqrt(((1-2)**2 + (2-2)**2 + (3-2)**2) / 2)  # ddof=1
         np.testing.assert_allclose(std, expected_std, atol=1e-10)
 
     def test_nan_filtering(self):
@@ -89,7 +89,8 @@ class TestFiniteMeanStd:
     def test_single_value(self):
         mean, std = finite_mean_std([5.0])
         np.testing.assert_allclose(mean, 5.0, atol=1e-10)
-        np.testing.assert_allclose(std, 0.0, atol=1e-10)
+        # ddof=1 with n=1 gives NaN (undefined sample std)
+        assert math.isnan(std)
 
 
 class TestBootstrapMeanCiBca:
@@ -182,5 +183,5 @@ class TestPairedTests:
 
     def test_return_keys(self):
         result = paired_tests([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
-        expected_keys = {"p_ttest", "p_wilcoxon", "mean_diff", "cohen_d"}
+        expected_keys = {"p_ttest", "p_wilcoxon", "p_mannwhitney", "mean_diff", "cohen_d", "cohen_d_paired"}
         assert set(result.keys()) == expected_keys

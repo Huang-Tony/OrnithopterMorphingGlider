@@ -30,7 +30,7 @@ def finite_mean_std(x):
     x = x[np.isfinite(x)]
     if x.size == 0:
         return float("nan"), float("nan")
-    return float(np.mean(x)), float(np.std(x, ddof=0))
+    return float(np.mean(x)), float(np.std(x, ddof=1))
 
 
 def _norm_cdf(z):
@@ -119,10 +119,16 @@ def holm_bonferroni(pvals: Dict[str, float], alpha: float = 0.05) -> Dict[str, D
     items = sorted(pvals.items(), key=lambda kv: kv[1])
     m = len(items)
     result = {}
+    rejected_so_far = True
     for rank, (name, p) in enumerate(items):
         adj_alpha = alpha / max(m - rank, 1)
-        result[name] = {"p": float(p), "rank": rank + 1, "adj_alpha": adj_alpha,
-                        "reject": bool(p < adj_alpha)}
+        if rejected_so_far and p < adj_alpha:
+            result[name] = {"p": float(p), "rank": rank + 1, "adj_alpha": adj_alpha,
+                            "reject": True}
+        else:
+            rejected_so_far = False
+            result[name] = {"p": float(p), "rank": rank + 1, "adj_alpha": adj_alpha,
+                            "reject": False}
     return result
 
 
@@ -132,15 +138,19 @@ def paired_tests(x, y):
     n = min(x.size, y.size)
     if n < 2:
         return {"p_ttest": float("nan"), "p_wilcoxon": float("nan"),
-                "mean_diff": float("nan"), "cohen_d": float("nan")}
+                "mean_diff": float("nan"), "cohen_d": float("nan"),
+                "cohen_d_paired": float("nan"), "p_mannwhitney": float("nan")}
     x = x[:n]
     y = y[:n]
     diff = x - y
     mean_diff = float(np.mean(diff))
     std_pool = float(np.sqrt((np.var(x, ddof=1) + np.var(y, ddof=1)) / 2))
     cohen_d = mean_diff / max(std_pool, 1e-12)
+    std_diff = float(np.std(diff, ddof=1))
+    cohen_d_paired = mean_diff / max(std_diff, 1e-12)
     p_t = float("nan")
     p_w = float("nan")
+    p_mw = float("nan")
     if _HAS_SCIPY:
         try:
             p_t = float(spstats.ttest_rel(x, y).pvalue)
@@ -151,14 +161,23 @@ def paired_tests(x, y):
             p_w = float(res.pvalue)
         except Exception:
             pass
-    return {"p_ttest": p_t, "p_wilcoxon": p_w,
-            "mean_diff": mean_diff, "cohen_d": cohen_d}
+        try:
+            res = spstats.mannwhitneyu(x, y, alternative="two-sided")
+            p_mw = float(res.pvalue)
+        except Exception:
+            pass
+    return {"p_ttest": p_t, "p_wilcoxon": p_w, "p_mannwhitney": p_mw,
+            "mean_diff": mean_diff, "cohen_d": cohen_d,
+            "cohen_d_paired": cohen_d_paired}
 
 
 def statistical_power_analysis(*, effect_size=0.5, alpha=0.05,
                                 n_seeds=3, n_episodes_per_seed=20):
+    # Conservative: use n_seeds as effective sample size for between-condition comparisons
+    # Episodes within a seed share the same trained network, so they are correlated
+    n_effective = n_seeds
     n_total = n_seeds * n_episodes_per_seed
-    se = 1.0 / math.sqrt(max(n_total, 1))
+    se = 1.0 / math.sqrt(max(n_effective, 1))
     z_alpha = _norm_ppf(1 - alpha / 2)
     z_beta = effect_size / se - z_alpha
     power_t = _norm_cdf(z_beta)
@@ -167,6 +186,8 @@ def statistical_power_analysis(*, effect_size=0.5, alpha=0.05,
     return {
         "effect_size": effect_size, "alpha": alpha,
         "n_seeds": n_seeds, "n_episodes_per_seed": n_episodes_per_seed,
-        "n_total": n_total, "power_ttest": power_t,
-        "power_wilcoxon": power_w, "min_detectable_d": min_d,
+        "n_total": n_total, "n_effective": n_effective,
+        "power_ttest": power_t, "power_wilcoxon": power_w,
+        "min_detectable_d": min_d,
+        "note": "Power based on seed-level (n_seeds) comparisons, conservative",
     }

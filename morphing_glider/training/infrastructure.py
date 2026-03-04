@@ -18,6 +18,7 @@ from morphing_glider.config import (
     GATE_MAX_FAILURE_RATE, GATE_MAX_FAILURE_RATE_BY_PHASE,
     GATE_OVERRIDE_IMPROVEMENT_THRESHOLD, GATE_OVERRIDE_IMPROVEMENT_THRESHOLD_RESIDUAL,
     HOLD_RANGE_STEPS, BEZIER_ITERS_TRAIN, BEZIER_ITERS_EVAL,
+    REPRO_TOLERANCE,
 )
 from morphing_glider.environment.env import MorphingGliderEnv6DOF
 from morphing_glider.environment.wrappers import (
@@ -272,13 +273,13 @@ def build_training_env_for_phase(phase, *, seed, n_envs, max_steps, prev_obs_rms
                            roll_pitch_limit_deg=float(phase.roll_pitch_limit_deg),
                            coupling_scale=float(phase.coupling_scale), stability_weight=float(phase.stability_weight))
             env = Monitor(env)
-            env = ProgressiveTwistWrapper(env, phase=phase_dict, twist_factor=float(phase.twist_factor),
-                                         reward_shaper=phase.reward_shaper, ramp_steps=int(phase.ramp_steps),
-                                         start_twist_factor=phase.start_twist_factor)
             if use_residual:
                 heur = VirtualTendonHeuristicController(yaw_rate_max=max(abs(v) for v in DEFAULT_YAW_TARGETS))
                 lim = phase.residual_limit if phase.residual_limit is not None else 0.08
                 env = ResidualHeuristicWrapper(env, heuristic=heur, residual_limit=lim)
+            env = ProgressiveTwistWrapper(env, phase=phase_dict, twist_factor=float(phase.twist_factor),
+                                         reward_shaper=phase.reward_shaper, ramp_steps=int(phase.ramp_steps),
+                                         start_twist_factor=phase.start_twist_factor)
             return env
         return _init
     env_fns = [thunk(i) for i in range(int(n_envs))]
@@ -342,7 +343,7 @@ def save_training_checkpoint(model: SAC, path: str, metadata: Dict[str, Any]) ->
 
 
 def verify_checkpoint_reproducibility(path: str, env_factory: Callable, n_episodes: int = 10,
-                                      tolerance: float = 0.05) -> bool:
+                                      tolerance: float = REPRO_TOLERANCE) -> bool:
     """Reload checkpoint and verify eval RMS within tolerance of logged value.
 
     Args:

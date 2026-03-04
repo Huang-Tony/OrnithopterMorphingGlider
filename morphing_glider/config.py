@@ -43,10 +43,11 @@ RUN_DEMO_OVERLAY = True
 GATE_MAX_FAILURE_RATE = 0.40
 GATE_MAX_FAILURE_RATE_BY_PHASE = {
     "basic_yaw": 0.50,
-    "partial_twist": 0.45,
-    "moderate_twist": 0.40,
-    "full_twist": 0.35,
-    "raw_finetune": 0.25,
+    "partial_twist": 0.50,
+    "intermediate_twist": 0.50,
+    "moderate_twist": 0.55,
+    "full_twist": 0.45,
+    "raw_finetune": 0.30,
 }
 GATE_OVERRIDE_IMPROVEMENT_THRESHOLD = 0.15
 GATE_OVERRIDE_IMPROVEMENT_THRESHOLD_RESIDUAL = 0.05

@@ -174,9 +174,12 @@ class TestVirtualTendonHeuristicController:
         np.testing.assert_allclose(ctrl._prev_cmd, np.zeros(6), atol=1e-10)
 
     def test_zero_error_within_deadband(self):
-        """When error is within deadband, output should be small."""
+        """When error is within deadband, yaw sweep should be zero but z-twist feedforward fires."""
         ctrl = VirtualTendonHeuristicController(deadband=0.1)
         obs = _make_dummy_obs(yaw_ref=0.05, omega_r=0.0)
         action, _ = ctrl.predict(obs)
-        # With smoothing from zero prev_cmd and deadband filtering, action should be zero
-        np.testing.assert_allclose(action, np.zeros(6), atol=1e-10)
+        # Yaw sweep (x) should be zero due to deadband
+        np.testing.assert_allclose(action[0], 0.0, atol=1e-6)
+        np.testing.assert_allclose(action[3], 0.0, atol=1e-6)
+        # z-twist feedforward fires on yaw_ref (not error), so z != 0
+        assert action[2] != 0.0 or action[5] != 0.0

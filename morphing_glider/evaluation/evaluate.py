@@ -30,11 +30,11 @@ def evaluate_controller(controller, *, n_episodes, eval_seed_base, domain_rand_s
                        max_steps=int(max_steps), for_eval=True, twist_enabled=True, include_omega_cross=True,
                        roll_pitch_limit_deg=float(roll_pitch_limit_deg), coupling_scale=float(coupling_scale),
                        stability_weight=float(stability_weight), sensor_noise_scale=float(sensor_noise_scale))
-        env = ProgressiveTwistWrapper(env, phase=phase, twist_factor=float(twist_factor), reward_shaper=None, ramp_steps=0)
         if use_residual_env:
             heur = VirtualTendonHeuristicController(yaw_rate_max=max(abs(v) for v in DEFAULT_YAW_TARGETS))
             lim = residual_limit if residual_limit is not None else 0.08
             env = ResidualHeuristicWrapper(env, heuristic=heur, residual_limit=lim)
+        env = ProgressiveTwistWrapper(env, phase=phase, twist_factor=float(twist_factor), reward_shaper=None, ramp_steps=0)
         hist = run_episode(env, controller, deterministic=True, seed=seed, max_steps=max_steps)
         met = compute_episode_metrics(hist, horizon_T=int(max_steps))
         mets.append(met)
@@ -51,7 +51,7 @@ def _bca_summary(values, *, ci=95.0, seed=0):
     if v.size == 0: return {"mean": float("nan"), "lo": float("nan"), "hi": float("nan"), "std": float("nan"), "n": 0.0}
     mean, lo, hi = bootstrap_mean_ci_bca(v, ci=ci, seed=seed)
     return {"mean": float(mean), "lo": float(lo), "hi": float(hi),
-            "std": float(np.std(v, ddof=0)), "n": float(v.size)}
+            "std": float(np.std(v, ddof=1)), "n": float(v.size)}
 
 
 def _mean_of_metric(metrics, key):
@@ -195,11 +195,12 @@ def print_final_eval_table(eval_blocks, *, ci=95.0):
     print("-"*120)
 
     # Find heuristic RMS@H for effect size calculation
-    heur_rmsh = {}
+    heur_rmsh = {}; heur_std = {}
     for algo, cond, block in eval_blocks:
         if algo.lower() == "heuristic":
             s = block.get("summaries", {}).get("rms_yaw_horizon", {})
             heur_rmsh[cond] = float(s.get("mean", np.nan))
+            heur_std[cond] = float(s.get("std", np.nan))
 
     def fmt(s, is_rate=False):
         mean = float(s.get("mean", np.nan)); lo = float(s.get("lo", np.nan)); hi = float(s.get("hi", np.nan))
@@ -213,13 +214,18 @@ def print_final_eval_table(eval_blocks, *, ci=95.0):
         for key, _ in METS:
             s = sums.get(key, {})
             row.append(f"{fmt(s, is_rate=(key=='failure')):>12s}")
-        # Cohen's d vs heuristic
+        # Cohen's d vs heuristic (pooled std)
         my_rms = float(sums.get("rms_yaw_horizon", {}).get("mean", np.nan))
         h_rms = heur_rmsh.get(cond, float("nan"))
         my_std = float(sums.get("rms_yaw_horizon", {}).get("std", np.nan))
-        if np.isfinite(my_rms) and np.isfinite(h_rms) and np.isfinite(my_std) and my_std > 1e-9:
-            d = (my_rms - h_rms) / my_std
-            row.append(f"{d:>+8.3f}")
+        h_sd = heur_std.get(cond, float("nan"))
+        if np.isfinite(my_rms) and np.isfinite(h_rms) and np.isfinite(my_std) and np.isfinite(h_sd):
+            s_pooled = float(np.sqrt((my_std**2 + h_sd**2) / 2.0))
+            if s_pooled > 1e-9:
+                d = (my_rms - h_rms) / s_pooled
+                row.append(f"{d:>+8.3f}")
+            else:
+                row.append(f"{'n/a':>12s}")
         else:
             row.append(f"{'n/a':>12s}")
         print(" | ".join(row))

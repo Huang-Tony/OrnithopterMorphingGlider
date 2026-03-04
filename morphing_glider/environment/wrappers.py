@@ -7,10 +7,11 @@ from morphing_glider.environment.env import YAW_REF_MAX
 
 
 class ResidualHeuristicWrapper(gym.Wrapper):
-    def __init__(self, env, *, heuristic, residual_limit=0.08, residual_smooth_alpha=0.7):
+    def __init__(self, env, *, heuristic, residual_limit=0.08, residual_smooth_alpha=0.85):
         super().__init__(env); self.heuristic = heuristic
-        self.action_space = self.env.action_space; self.observation_space = self.env.observation_space
-        self.residual_limit = np.full((6,), 0.08, dtype=float); self.set_residual_limit(residual_limit)
+        self.observation_space = self.env.observation_space
+        self.residual_limit = np.full((6,), 0.08, dtype=float)
+        self.set_residual_limit(residual_limit)
         self.residual_smooth_alpha = float(np.clip(residual_smooth_alpha, 0.0, 1.0))
         self._last_obs = None; self._last_residual = np.zeros(6, dtype=float)
 
@@ -18,6 +19,11 @@ class ResidualHeuristicWrapper(gym.Wrapper):
         lim = np.asarray(lim, dtype=float)
         if lim.size == 1: lim = np.full((6,), float(lim.item()), dtype=float)
         self.residual_limit = lim.astype(float, copy=True)
+        # Action space matches residual bounds so SAC scales correctly
+        self.action_space = gym.spaces.Box(
+            low=-self.residual_limit.astype(np.float32),
+            high=self.residual_limit.astype(np.float32),
+            dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         obs, info = self.env.reset(seed=seed, options=options)

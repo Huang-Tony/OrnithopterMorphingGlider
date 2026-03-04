@@ -232,7 +232,7 @@ class LatentSpaceMRI:
         if method.lower() == "tsne" and n_samples > 50:
             perp = min(30, n_samples // 2)
             projector = TSNE(n_components=2, perplexity=perp, random_state=42,
-                            n_iter=1000, init='pca', learning_rate='auto')
+                            max_iter=1000, init='pca', learning_rate='auto')
             coords = projector.fit_transform(latents)
         else:
             projector = PCA(n_components=min(2, latents.shape[1]), random_state=42)

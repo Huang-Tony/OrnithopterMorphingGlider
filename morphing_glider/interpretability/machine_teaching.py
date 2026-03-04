@@ -77,9 +77,9 @@ class MachineTeacher:
 
     @staticmethod
     def inject_into_heuristic(controller, coefficient: Dict[str, float]) -> None:
-        """Update VirtualTendonHeuristicController with AI-discovered z_range.
+        """Update VirtualTendonHeuristicController with AI-discovered z_ff_slope.
 
-        Maps: z_range_new = |slope| * yaw_rate_max
+        Directly sets the feedforward slope used for differential z-twist.
 
         Args:
             controller: VirtualTendonHeuristicController to update.
@@ -89,10 +89,9 @@ class MachineTeacher:
         if not np.isfinite(slope) or abs(slope) < 1e-6:
             print("[MACHINE TEACHING] Cannot inject: invalid slope"); return
 
-        old_z = float(controller.z_range)
-        new_z = float(np.clip(abs(slope) * controller.yaw_rate_max, 0.01, DZ_RANGE[1]))
-        controller.z_range = new_z
-        print(f"[MACHINE TEACHING] Heuristic z_range: {old_z:.4f} -> {new_z:.4f}")
+        old_slope = float(controller.z_ff_slope)
+        controller.z_ff_slope = float(slope)
+        print(f"[MACHINE TEACHING] Heuristic z_ff_slope: {old_slope:.4f} -> {slope:.4f}")
 
     @staticmethod
     def inject_into_gain_scheduled_pid(controller, coefficient: Dict[str, float]) -> None:

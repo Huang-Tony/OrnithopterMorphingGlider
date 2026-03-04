@@ -18,7 +18,7 @@ from morphing_glider.utils.quaternion import quat_to_euler_xyz
 def _finite_mean_std(x):
     a = np.asarray(x, dtype=float); a = a[np.isfinite(a)]
     if a.size == 0: return float("nan"), float("nan"), 0
-    return float(np.mean(a)), float(np.std(a, ddof=0)), int(a.size)
+    return float(np.mean(a)), float(np.std(a, ddof=1)), int(a.size)
 
 
 # ================================================================
@@ -99,7 +99,11 @@ def compute_episode_metrics(history, *, horizon_T):
         settle_times.append(st)
     se = np.concatenate(steady_err) if steady_err else np.array([])
     te = np.concatenate(transient_err) if transient_err else np.array([])
-    sts = np.asarray(settle_times); sts = sts[np.isfinite(sts)]
+    sts = np.asarray(settle_times)
+    # Impute NaN (never settled) with max episode duration for fair comparison
+    max_settle = float(horizon_T) if horizon_T > 0 else float("nan")
+    sts = np.where(np.isfinite(sts), sts, max_settle)
+    sts = sts[np.isfinite(sts)]
     pl = np.array([h.get("info",{}).get("power_loss_total",np.nan) for h in history]); pl = pl[np.isfinite(pl)]
     def mi(key): v = np.array([h.get("info",{}).get(key,np.nan) for h in history]); v=v[np.isfinite(v)]; return float(np.mean(v)) if v.size else float("nan")
     vz_f = vz[np.isfinite(vz)]

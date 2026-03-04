@@ -64,7 +64,13 @@ class RewardComputer:
                 power_norm, e_sum_norm, z_sym,
                 stability_weight,
                 roll_pitch_limit=1.22):
-        w_att = max(stability_weight * self.w_att_gain, self.w_att_floor) / max(1e-9, self.max_cost_att_ref)
+        # Scale attitude penalty by limit tightness — tighter limits need stronger signals
+        # Reference: pi/2 (90°). As limit tightens, penalty amplifies.
+        rpl_rad = float(max(roll_pitch_limit, 0.1))
+        _REF_RAD = 1.5708  # pi/2 = 90 degrees
+        limit_tightness = max(1.0, 1.0 + 2.0 * max(0.0, _REF_RAD - rpl_rad) / _REF_RAD)
+        w_att = max(stability_weight * self.w_att_gain * limit_tightness,
+                    self.w_att_floor * limit_tightness) / max(1e-9, self.max_cost_att_ref)
         w_rates = max(stability_weight * self.w_rates_gain, self.w_rates_floor) / max(1e-9, self.max_cost_rates_ref)
 
         cost_track = float(yaw_error ** 2)
