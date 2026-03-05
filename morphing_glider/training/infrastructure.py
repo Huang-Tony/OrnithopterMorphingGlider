@@ -134,17 +134,20 @@ def apply_phase_runtime_settings(vec_env, phase):
     cs = float(getattr(phase, "coupling_scale", 1.0))
     sw = float(getattr(phase, "stability_weight", 0.03))
     try:
-        vec_env.env_method("set_roll_pitch_limit_deg", rp)
-        vec_env.env_method("set_coupling_scale", cs)
-        vec_env.env_method("set_stability_weight", sw)
-        return
-    except Exception: pass
-    try:
         base = vec_env.venv if isinstance(vec_env, VecNormalize) else vec_env
         if hasattr(base, "envs"):
             for e in base.envs:
-                b = e.unwrapped; b.roll_pitch_limit = math.radians(rp)
-                b.coupling_scale = float(np.clip(cs, 0.0, 1.0)); b.stability_weight = float(max(0.0, sw))
+                b = e.unwrapped
+                b.roll_pitch_limit = math.radians(rp)
+                b.coupling_scale = float(np.clip(cs, 0.0, 1.0))
+                b.stability_weight = float(max(0.0, sw))
+            return
+    except Exception:
+        pass
+    try:
+        vec_env.env_method("set_roll_pitch_limit_deg", rp)
+        vec_env.env_method("set_coupling_scale", cs)
+        vec_env.env_method("set_stability_weight", sw)
     except Exception as e:
         print(f"[PhaseConfig] WARNING: {e!r}")
 
@@ -260,12 +263,14 @@ def _apply_residual_limit_on_vec(vec, lim):
 # Training environment construction
 # ================================================================
 
-def build_training_env_for_phase(phase, *, seed, n_envs, max_steps, prev_obs_rms, use_residual):
+def build_training_env_for_phase(phase, *, seed, n_envs, max_steps, prev_obs_rms,
+                                 use_residual, max_residual_limit=None):
     phase_dict = {"name": phase.name, "twist_factor": float(np.clip(phase.twist_factor, 0.0, 1.0)),
                   "rand_scale": float(np.clip(phase.rand_scale, 0.0, 1.0)),
                   "ramp_steps": int(max(0, phase.ramp_steps)),
                   "start_twist_factor": float(phase.start_twist_factor) if phase.start_twist_factor is not None else float(np.clip(phase.twist_factor, 0.0, 1.0)),
                   "reward_shaper": phase.reward_shaper}
+    _max_rl = max_residual_limit  # capture for closure
     def thunk(rank):
         def _init():
             env = make_env(seed=int(seed+rank), domain_rand_scale=float(phase.rand_scale),
@@ -276,7 +281,8 @@ def build_training_env_for_phase(phase, *, seed, n_envs, max_steps, prev_obs_rms
             if use_residual:
                 heur = VirtualTendonHeuristicController(yaw_rate_max=max(abs(v) for v in DEFAULT_YAW_TARGETS))
                 lim = phase.residual_limit if phase.residual_limit is not None else 0.08
-                env = ResidualHeuristicWrapper(env, heuristic=heur, residual_limit=lim)
+                env = ResidualHeuristicWrapper(env, heuristic=heur, residual_limit=lim,
+                                              action_space_limit=_max_rl)
             env = ProgressiveTwistWrapper(env, phase=phase_dict, twist_factor=float(phase.twist_factor),
                                          reward_shaper=phase.reward_shaper, ramp_steps=int(phase.ramp_steps),
                                          start_twist_factor=phase.start_twist_factor)

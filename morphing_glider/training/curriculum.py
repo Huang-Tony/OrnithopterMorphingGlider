@@ -97,9 +97,19 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
             "phases": [p.__dict__ for p in phases], "use_residual": bool(use_residual),
             "algo_name": "residual_curriculum" if use_residual else "curriculum"}
     vec = vecnorm = model = None
+
+    # Compute max residual limit across all phases so the action_space stays fixed
+    max_residual_limit = None
+    if use_residual:
+        all_lims = [p.residual_limit for p in phases if p.residual_limit is not None]
+        if all_lims:
+            max_residual_limit = np.max(np.stack([np.asarray(l, dtype=float) for l in all_lims]), axis=0)
+
     try:
         vec, vecnorm = build_training_env_for_phase(phases[0], seed=seed+2000, n_envs=n_envs,
-                                                     max_steps=max_steps, prev_obs_rms=None, use_residual=use_residual)
+                                                     max_steps=max_steps, prev_obs_rms=None,
+                                                     use_residual=use_residual,
+                                                     max_residual_limit=max_residual_limit)
         apply_phase_runtime_settings(vec, phases[0])
         model = build_sac_model(vec, seed=seed,
                                 tensorboard_log="tb_curriculum_residual" if use_residual else "tb_curriculum",
@@ -140,7 +150,8 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
                 except Exception: pass
                 del vec; gc.collect()
                 vec, vecnorm = build_training_env_for_phase(phase, seed=seed+2000+1000*i, n_envs=n_envs,
-                    max_steps=max_steps, prev_obs_rms=prev_obs_rms, use_residual=use_residual)
+                    max_steps=max_steps, prev_obs_rms=prev_obs_rms, use_residual=use_residual,
+                    max_residual_limit=max_residual_limit)
                 apply_phase_runtime_settings(vec, phase)
                 model.set_env(vec)
                 _partial_replay_reset(model, retain_fraction=REPLAY_RETAIN_FRACTION)
