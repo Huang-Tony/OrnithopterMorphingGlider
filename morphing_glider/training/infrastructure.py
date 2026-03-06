@@ -202,10 +202,15 @@ def _set_phase_lr_on_sac(model, lr, phase_name):
 # Eval-trace helpers
 # ================================================================
 
-def _standardize_evaltrace_append(logs, *, tag, phase_name, global_steps, stats):
+def _standardize_evaltrace_append(logs, *, tag, phase_name, global_steps, stats,
+                                   eval_rand_scale=None, eval_rpl=None):
     entry = {"tag": str(tag), "phase": str(phase_name), "global_steps": int(global_steps),
              "mean_rmsh": float(stats.get("mean_rmsh", np.nan)),
              "lo_rmsh": float(stats.get("lo_rmsh", np.nan)), "hi_rmsh": float(stats.get("hi_rmsh", np.nan))}
+    if eval_rand_scale is not None:
+        entry["eval_rand_scale"] = float(eval_rand_scale)
+    if eval_rpl is not None:
+        entry["eval_rpl"] = float(eval_rpl)
     logs.setdefault("evaltrace", []).append(entry)
     logs.setdefault("eval_details", []).append({**entry, **stats})
 
@@ -388,15 +393,18 @@ def verify_checkpoint_reproducibility(path: str, env_factory: Callable, n_episod
         ctrl = SB3Controller(model,
                              obs_rms=(vn.obs_rms if vn else None),
                              clip_obs=(vn.clip_obs if vn else 10.0))
+        eval_rand = float(meta.get("eval_rand_scale", 1.0))
+        eval_rpl = float(meta.get("eval_rpl", 70.0))
         mets, _ = evaluate_controller(ctrl, n_episodes=n_episodes, eval_seed_base=GLOBAL_SEED+99999,
-                                       domain_rand_scale=1.0, max_steps=200, twist_factor=1.0,
-                                       use_residual_env=is_residual, store_histories=False)
+                                       domain_rand_scale=eval_rand, max_steps=200, twist_factor=1.0,
+                                       use_residual_env=is_residual, store_histories=False,
+                                       roll_pitch_limit_deg=eval_rpl)
         rms_vals = [float(m.get("rms_yaw_horizon", np.nan)) for m in mets]
         current_rms = float(np.nanmean(rms_vals))
         del model; gc.collect()
         if np.isfinite(logged_rms) and np.isfinite(current_rms):
             passed = abs(current_rms - logged_rms) <= tolerance
-            print(f"  [REPRO] algo={algo} logged={logged_rms:.4f} current={current_rms:.4f} tol={tolerance} → {'PASS' if passed else 'FAIL'}")
+            print(f"  [REPRO] algo={algo} rand={eval_rand} rpl={eval_rpl}° logged={logged_rms:.4f} current={current_rms:.4f} tol={tolerance} → {'PASS' if passed else 'FAIL'}")
             return passed
         print(f"  [REPRO] Cannot verify (logged={logged_rms}, current={current_rms})")
         return False

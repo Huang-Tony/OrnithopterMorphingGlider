@@ -142,12 +142,14 @@ def main():
             raise ValueError(algo)
         name = f"{algo}_seed{seed}"
         model_path, vecnorm_path = save_model_and_vecnorm(model, vecnorm, out_dir=out_dir, name=name)
+        last_entry = logs.get("evaltrace", [{}])[-1] if logs.get("evaltrace") else {}
         meta = {
             "algo": algo, "seed": seed,
-            "mean_rmsh": float(logs.get("evaltrace", [{}])[-1].get("mean_rmsh", np.nan))
-            if logs.get("evaltrace") else float("nan"),
+            "mean_rmsh": float(last_entry.get("mean_rmsh", np.nan)),
             "use_residual": (algo == "residual_curriculum"),
             "vecnorm_path": vecnorm_path,
+            "eval_rand_scale": float(last_entry.get("eval_rand_scale", 1.0)),
+            "eval_rpl": float(last_entry.get("eval_rpl", 70.0)),
         }
         save_training_checkpoint(model, model_path, meta)
         summarize_curriculum_progression(logs)
@@ -428,9 +430,10 @@ def main():
 
         demo_seed = int(GLOBAL_SEED + 123)
 
-        def _make_demo_env(use_residual=False):
+        def _make_demo_env(use_residual=False, roll_pitch_limit_deg=None):
+            rpl = roll_pitch_limit_deg if roll_pitch_limit_deg is not None else FINAL_EVAL_RPL
             env = make_env(seed=demo_seed, domain_rand_scale=0.0, max_steps=MAX_STEPS_EP,
-                           for_eval=True, roll_pitch_limit_deg=FINAL_EVAL_RPL,
+                           for_eval=True, roll_pitch_limit_deg=rpl,
                            coupling_scale=FINAL_EVAL_COUP, stability_weight=FINAL_EVAL_SW)
             if use_residual:
                 heur_r = VirtualTendonHeuristicController(
@@ -495,12 +498,20 @@ def main():
             ("GS-PID", _demo_gs_pid),
         ]
 
+        N_DEMO_TRIES = 3  # Run multiple episodes, pick longest for overlay
+
         for name, ctrl in demo_classical:
             try:
-                env_c = _make_demo_env()
-                hist = run_episode(env_c, ctrl, deterministic=True, seed=demo_seed)
-                histories.append(hist)
-                labels.append(name)
+                best_hist = None
+                for attempt in range(N_DEMO_TRIES):
+                    env_c = _make_demo_env(roll_pitch_limit_deg=FINAL_EVAL_RPL_CLASSICAL)
+                    h = run_episode(env_c, ctrl, deterministic=True,
+                                    seed=int(demo_seed + attempt * 7))
+                    if best_hist is None or len(h) > len(best_hist):
+                        best_hist = h
+                if best_hist:
+                    histories.append(best_hist)
+                    labels.append(name)
             except Exception as exc:
                 print(f"[DEMO] {name} failed: {exc!r}")
 
@@ -519,10 +530,16 @@ def main():
                     demo_model,
                     obs_rms=(demo_vecnorm.obs_rms if demo_vecnorm else None),
                     clip_obs=(demo_vecnorm.clip_obs if demo_vecnorm else 10.0))
-                env_t = _make_demo_env(use_residual=(algo == "residual_curriculum"))
-                hist = run_episode(env_t, demo_ctrl, deterministic=True, seed=demo_seed)
-                histories.append(hist)
-                labels.append(_pretty.get(algo, algo))
+                best_hist = None
+                for attempt in range(N_DEMO_TRIES):
+                    env_t = _make_demo_env(use_residual=(algo == "residual_curriculum"))
+                    h = run_episode(env_t, demo_ctrl, deterministic=True,
+                                    seed=int(demo_seed + attempt * 7))
+                    if best_hist is None or len(h) > len(best_hist):
+                        best_hist = h
+                if best_hist:
+                    histories.append(best_hist)
+                    labels.append(_pretty.get(algo, algo))
                 del demo_model; gc.collect()
             except Exception as exc:
                 print(f"[DEMO] {algo} failed: {exc!r}")

@@ -128,7 +128,9 @@ def train_with_curriculum(*, phases, seed, n_envs, max_steps, eval_every_steps,
                 label=f"EVAL({tag}) {phase.name} | rand={eval_scale:.2f} | rp={phase.roll_pitch_limit_deg:.0f}°",
                 ci_method="bca", print_cost_terms=True)
             _standardize_evaltrace_append(logs, tag=str(tag), phase_name=str(phase.name),
-                                          global_steps=int(model.num_timesteps), stats=stats)
+                                          global_steps=int(model.num_timesteps), stats=stats,
+                                          eval_rand_scale=eval_scale,
+                                          eval_rpl=float(phase.roll_pitch_limit_deg))
             return stats
 
         print("\n" + "#"*80)
