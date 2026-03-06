@@ -12,7 +12,9 @@ from morphing_glider.config import _add_panel_label, _save_fig
 
 def plot_yaw_overlay(histories, labels, title):
     if not histories: return
-    yaw_ref = np.array([h["yaw_ref"] for h in histories[0]])
+    # Use the longest history's yaw_ref so the reference spans the full episode
+    longest_hist = max(histories, key=len)
+    yaw_ref = np.array([h["yaw_ref"] for h in longest_hist])
     fig, ax = plt.subplots(1, 1, figsize=(10, 4))
     ax.plot(yaw_ref, lw=2.5, ls="--", color="black", label="Yaw Reference")
     for hist, lab in zip(histories, labels):
