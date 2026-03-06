@@ -11,6 +11,26 @@ from morphing_glider.environment.wrappers import ProgressiveTwistWrapper
 from morphing_glider.interpretability.kan import KANPolicyNetwork
 
 
+class _NormalizedStudentWrapper:
+    """Wraps a KAN student to normalize raw observations before predict."""
+    def __init__(self, student, obs_rms, clip_obs=10.0):
+        self._student = student
+        self._obs_rms = obs_rms
+        self._clip_obs = float(clip_obs)
+
+    def reset(self):
+        self._student.reset()
+
+    def predict(self, observation, state=None, episode_start=None, deterministic=True):
+        obs = np.asarray(observation, dtype=np.float32)
+        if self._obs_rms is not None:
+            mean = np.asarray(self._obs_rms.mean, dtype=np.float32)
+            var = np.asarray(self._obs_rms.var, dtype=np.float32)
+            obs = np.clip((obs - mean) / np.sqrt(var + 1e-8),
+                          -self._clip_obs, self._clip_obs).astype(np.float32)
+        return self._student.predict(obs, state=state, deterministic=deterministic)
+
+
 class DAggerDistillation:
     """DAgger imitation learning: train transparent student from opaque expert.
 
@@ -46,7 +66,8 @@ class DAggerDistillation:
                  max_steps: int = 200,
                  mix_probability: float = 0.8,
                  beta_decay: float = 0.85,
-                 learning_rate: float = 1e-3):
+                 learning_rate: float = 1e-3,
+                 obs_rms=None, clip_obs: float = 10.0):
         self.expert = expert
         self.student = student
         self.n_iters = n_iterations
@@ -55,16 +76,28 @@ class DAggerDistillation:
         self.beta = mix_probability
         self.beta_decay = beta_decay
         self.lr = learning_rate
+        self.obs_rms = obs_rms
+        self.clip_obs = float(clip_obs)
 
         self._obs_buffer: List[np.ndarray] = []
         self._act_buffer: List[np.ndarray] = []
 
         self._device = next(student.parameters()).device
 
+    def _normalize_obs(self, obs):
+        if self.obs_rms is None:
+            return obs
+        mean = np.asarray(self.obs_rms.mean, dtype=np.float32)
+        var = np.asarray(self.obs_rms.var, dtype=np.float32)
+        return np.clip((obs - mean) / np.sqrt(var + 1e-8),
+                       -self.clip_obs, self.clip_obs).astype(np.float32)
+
     def _collect_iteration(self, iteration: int) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """Collect one DAgger iteration of (observation, expert_action) pairs.
 
         Rolls out the mixed policy but always queries the expert for labels.
+        Observations are normalized using obs_rms (if available) before storage,
+        so the student trains in the same observation space as the expert.
 
         Args:
             iteration: Current DAgger iteration index.
@@ -80,7 +113,7 @@ class DAggerDistillation:
 
         for ep in range(self.episodes_per_iter):
             env = make_env(seed=int(iteration * 1000 + ep + 80000),
-                          domain_rand_scale=0.3,
+                          domain_rand_scale=0.5,
                           max_steps=self.max_steps, for_eval=True,
                           roll_pitch_limit_deg=70.0, coupling_scale=1.0)
             env = ProgressiveTwistWrapper(env, phase={"name": "dagger"},
@@ -92,13 +125,16 @@ class DAggerDistillation:
 
             for t in range(self.max_steps):
                 expert_action, _ = self.expert.predict(obs, deterministic=True)
-                obs_list.append(obs.copy())
+                # Store normalized obs so student trains in expert's obs space
+                obs_norm = self._normalize_obs(obs)
+                obs_list.append(obs_norm.copy())
                 act_list.append(np.asarray(expert_action, dtype=np.float32).copy())
 
                 if np.random.random() < beta:
                     action = expert_action
                 else:
-                    action, _ = self.student.predict(obs, deterministic=True)
+                    # Student predicts from normalized obs
+                    action, _ = self.student.predict(obs_norm, deterministic=True)
 
                 obs, _, terminated, truncated, _ = env.step(action)
                 if terminated or truncated:
@@ -186,10 +222,12 @@ class DAggerDistillation:
             try:
                 # Deferred import to avoid circular dependencies
                 from morphing_glider.evaluation import evaluate_controller
+                # Wrap student with obs normalization for proper eval
+                eval_student = _NormalizedStudentWrapper(self.student, self.obs_rms, self.clip_obs)
                 mets, _ = evaluate_controller(
-                    self.student, n_episodes=3,
+                    eval_student, n_episodes=3,
                     eval_seed_base=int(90000 + it * 100),
-                    domain_rand_scale=0.3, max_steps=self.max_steps,
+                    domain_rand_scale=0.5, max_steps=self.max_steps,
                     twist_factor=1.0, use_residual_env=False,
                     store_histories=False, roll_pitch_limit_deg=70.0,
                     coupling_scale=1.0, stability_weight=0.03)

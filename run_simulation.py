@@ -146,6 +146,8 @@ def main():
             "algo": algo, "seed": seed,
             "mean_rmsh": float(logs.get("evaltrace", [{}])[-1].get("mean_rmsh", np.nan))
             if logs.get("evaltrace") else float("nan"),
+            "use_residual": (algo == "residual_curriculum"),
+            "vecnorm_path": vecnorm_path,
         }
         save_training_checkpoint(model, model_path, meta)
         summarize_curriculum_progression(logs)
@@ -204,8 +206,15 @@ def main():
     # ---- Checkpoint verification ----
     if train_runs:
         from morphing_glider.training.infrastructure import verify_checkpoint_reproducibility, make_env
-        best_rr = train_runs[0]
-        print("\n[CHECKPOINT VERIFICATION]")
+        # Prefer non-residual model with lowest RMS@H for repro check
+        repro_candidates = [rr for rr in train_runs if "residual" not in rr.algo_name]
+        if not repro_candidates:
+            repro_candidates = train_runs
+        best_rr = min(repro_candidates,
+                      key=lambda rr: float(
+                          rr.train_logs.get("evaltrace", [{}])[-1].get("mean_rmsh", 999)
+                          if rr.train_logs.get("evaltrace") else 999))
+        print(f"\n[CHECKPOINT VERIFICATION] model={best_rr.algo_name} seed={best_rr.train_seed}")
         passed = verify_checkpoint_reproducibility(
             best_rr.model_path,
             env_factory=lambda: make_env(seed=0, domain_rand_scale=1.0, max_steps=200, for_eval=True),
@@ -706,23 +715,29 @@ def _run_interpretability(train_runs, heuristic, pid, gs_pid,
     # 5. DAgger with KAN
     try:
         from morphing_glider.interpretability.kan import KANPolicyNetwork
-        from morphing_glider.interpretability.dagger import DAggerDistillation
+        from morphing_glider.interpretability.dagger import DAggerDistillation, _NormalizedStudentWrapper
         print(f"\n{'=' * 60}\n5. DAgger + KAN\n{'=' * 60}")
         kan_device = torch.device(DEVICE)
         kan_student = KANPolicyNetwork(
             obs_dim=OBS_DIM, action_dim=6,
             hidden_dim=24 if FAST_DEV_RUN else (48 if MEDIUM_RUN else 64),
             n_bases=5 if FAST_DEV_RUN else (8 if MEDIUM_RUN else 10)).to(kan_device)
+        # Pass expert's obs_rms so DAgger stores normalized observations
+        expert_obs_rms = getattr(interp_ctrl, "obs_rms", None)
+        expert_clip_obs = getattr(interp_ctrl, "clip_obs", 10.0)
         dagger = DAggerDistillation(
             expert=interp_ctrl, student=kan_student,
             n_iterations=3 if FAST_DEV_RUN else (10 if MEDIUM_RUN else 15),
             episodes_per_iter=2 if FAST_DEV_RUN else (5 if MEDIUM_RUN else 8),
-            max_steps=MAX_STEPS_EP, mix_probability=0.9, beta_decay=0.8, learning_rate=5e-4)
+            max_steps=MAX_STEPS_EP, mix_probability=0.9, beta_decay=0.8, learning_rate=5e-4,
+            obs_rms=expert_obs_rms, clip_obs=expert_clip_obs)
         dagger_history = dagger.train(verbose=True)
         DAggerDistillation.plot_training_history(
             dagger_history, save_path="morphing_glider_figures/dagger_training.png")
+        # Wrap student with obs normalization for final eval
+        kan_eval_wrapper = _NormalizedStudentWrapper(kan_student, expert_obs_rms, expert_clip_obs)
         kan_result = summarize_controller_over_episodes_bca(
-            kan_student, label="KAN-DAgger", domain_scale=0.5, max_steps=MAX_STEPS_EP,
+            kan_eval_wrapper, label="KAN-DAgger", domain_scale=0.5, max_steps=MAX_STEPS_EP,
             eval_episodes=min(10, FINAL_EVAL_EPS), eval_seed_base=EVAL_SEED_BASE + 9000,
             roll_pitch_limit_deg=FINAL_EVAL_RPL, coupling_scale=FINAL_EVAL_COUP,
             stability_weight=FINAL_EVAL_SW, ci=95.0)

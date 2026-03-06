@@ -352,9 +352,12 @@ def verify_checkpoint_reproducibility(path: str, env_factory: Callable, n_episod
                                       tolerance: float = REPRO_TOLERANCE) -> bool:
     """Reload checkpoint and verify eval RMS within tolerance of logged value.
 
+    Reads algo type from .meta.json to use matching eval conditions
+    (obs normalization, domain randomization, residual wrapper).
+
     Args:
         path: Path to .zip checkpoint.
-        env_factory: Callable returning a gym.Env.
+        env_factory: Callable returning a gym.Env (unused, kept for API compat).
         n_episodes: Number of verification episodes.
         tolerance: Allowed RMS deviation from logged value.
 
@@ -364,29 +367,36 @@ def verify_checkpoint_reproducibility(path: str, env_factory: Callable, n_episod
     References:
         [PINEAU_2021] Improving Reproducibility in ML.
     """
-    # Deferred import to avoid circular dependency with evaluation module
     from morphing_glider.evaluation import evaluate_controller
 
     meta_path = path.replace(".zip", ".meta.json")
-    logged_rms = float("nan")
+    meta = {}
     try:
         with open(meta_path, "r") as f:
             meta = json.load(f)
-        logged_rms = float(meta.get("mean_rmsh", np.nan))
     except Exception:
         pass
+    logged_rms = float(meta.get("mean_rmsh", np.nan))
+    algo = str(meta.get("algo", "baseline"))
+    is_residual = ("residual" in algo.lower())
+
     try:
         model = SAC.load(path, device=DEVICE)
-        ctrl = SB3Controller(model)
+        # Load VecNormalize stats for proper obs normalization
+        vecnorm_path = meta.get("vecnorm_path") or path.replace(".zip", ".vecnorm.pkl")
+        vn = load_vecnorm_for_eval(str(vecnorm_path), max_steps=200)
+        ctrl = SB3Controller(model,
+                             obs_rms=(vn.obs_rms if vn else None),
+                             clip_obs=(vn.clip_obs if vn else 10.0))
         mets, _ = evaluate_controller(ctrl, n_episodes=n_episodes, eval_seed_base=GLOBAL_SEED+99999,
-                                       domain_rand_scale=0.0, max_steps=200, twist_factor=1.0,
-                                       use_residual_env=False, store_histories=False)
+                                       domain_rand_scale=1.0, max_steps=200, twist_factor=1.0,
+                                       use_residual_env=is_residual, store_histories=False)
         rms_vals = [float(m.get("rms_yaw_horizon", np.nan)) for m in mets]
         current_rms = float(np.nanmean(rms_vals))
         del model; gc.collect()
         if np.isfinite(logged_rms) and np.isfinite(current_rms):
             passed = abs(current_rms - logged_rms) <= tolerance
-            print(f"  [REPRO] logged={logged_rms:.4f} current={current_rms:.4f} tol={tolerance} → {'PASS' if passed else 'FAIL'}")
+            print(f"  [REPRO] algo={algo} logged={logged_rms:.4f} current={current_rms:.4f} tol={tolerance} → {'PASS' if passed else 'FAIL'}")
             return passed
         print(f"  [REPRO] Cannot verify (logged={logged_rms}, current={current_rms})")
         return False
