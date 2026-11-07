@@ -82,3 +82,12 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   Reported in the paper as a limitation. Pilot of a remedy (revision/mode_aware_pilot.py): flat SAC seed 7 retrained
   with a randomized wing mode in the loop; compared on validation episodes only. Not part of the pre-specified
   comparison; any use in the paper is the user's decision.
+
+
+## Note 2026-11-08 06:50 (task curriculum: design fixed, validation result, confirmation on the evaluation protocol)
+
+* Validation episodes (seeds 60000+, 50 per condition; analysis/task_curriculum_validation.json), 1M steps:
+  flat SAC (5 seeds) 0.146 / 0.170 RMS@H nominal / randomized; original curriculum (5) 0.233 / 0.312;
+  task curriculum (2 seeds, 17 and 117) 0.154 / 0.150. The design was not changed after seeing these numbers.
+* The fixed design is completed to 5 seeds (217, 317, 417; revision/tc_complete.sh) and evaluated once with the
+  evaluation protocol (revision/eval_task_curriculum.py). Whether it enters the paper is the user's decision.
