@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Training-budget sensitivity (revision R1, supplementary; declared 2026-11-08 02:05 before any 2M result existed).
+"""Equal 2M-step training budget for all three SAC paradigms (revision R1; declared 2026-11-08 02:05 / extended to
+all paradigms 02:15, before any 2M result existed).
 
-Question: does the ranking of the training paradigms, or the margin over the classical controllers, depend on the
-equal 1M-step budget of the pre-specified comparison? Flat SAC and curriculum SAC are retrained from scratch with an
-equal budget of 2M steps (the curriculum phases scale with the budget, phases.make_phases), on the same training
-seeds as their 1M counterparts (baseline 7, 107; curriculum 17, 117), and evaluated on the same 2 x 50 evaluation
-episodes. Two seeds per paradigm is all the remaining compute allows (8-core laptop, ~2.3M steps/h), so the result
-is reported as a sensitivity analysis, not as part of the pre-specified comparison, whatever its outcome.
+Question: do the conclusions of the pre-specified equal-1M-step comparison depend on the budget? All 15 SAC runs
+(flat, curriculum, residual curriculum; the same 5 training seeds each) are retrained from scratch with an equal
+budget of 2M steps (the curriculum phases scale with the budget, phases.make_phases) and evaluated on the same
+2 x 50 evaluation episodes. Jobs run in balanced order (one seed of every paradigm per round), so that if compute
+runs out every paradigm has the same number of seeds. Reported alongside the 1M results whatever the outcome.
 
 Outputs are isolated in revision_runs/budget2M/ (REVISION_RUNS_DIR), so the primary results cannot be affected.
 Scheduling: jobs only use capacity the primary pipeline does not need --
@@ -31,7 +31,8 @@ MAIN = os.path.join(REPO, "revision_runs")
 EXT = os.path.join(MAIN, "budget2M")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 STEPS = 2_000_000
-JOBS = [("baseline", 7), ("curriculum", 17), ("baseline", 107), ("curriculum", 117)]
+JOBS = [(a, s + off) for s in (7, 107, 207, 307, 407)
+        for a, off in (("baseline", 0), ("curriculum", 10), ("residual_curriculum", 20))]
 LOG = os.path.join(EXT, "queue.log")
 
 
@@ -105,7 +106,7 @@ def run():
     workers = "4" if main_state()[2] == "done" else "2"
     env = dict(os.environ, REVISION_RUNS_DIR=EXT)
     rc = subprocess.call(["nice", "-n", "5", PY, "-u", os.path.join(HERE, "final_eval.py"), "--workers", workers,
-                          "--algos", "baseline", "curriculum"], env=env, cwd=REPO,
+                          "--algos", "baseline", "curriculum", "residual_curriculum"], env=env, cwd=REPO,
                          stdout=open(os.path.join(EXT, "final_eval.log"), "a"), stderr=subprocess.STDOUT)
     log(f"final_eval rc={rc}")
     compare()
@@ -131,7 +132,7 @@ def compare():
                          "fail_1M": float(np.mean([e["failure"] for e in e1])),
                          "fail_2M": float(np.mean([e["failure"] for e in e2])), "p_wilcoxon": p, "n": int(len(d))}
         out["pairs"].append(row)
-    for algo in ("baseline", "curriculum"):
+    for algo in ("baseline", "curriculum", "residual_curriculum"):
         for cond in ("nominal", "randomized"):
             rows = [r[cond] for r in out["pairs"] if r["algo"] == algo and cond in r]
             if rows:

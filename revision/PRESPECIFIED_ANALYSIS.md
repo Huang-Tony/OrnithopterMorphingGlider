@@ -47,3 +47,7 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   with their 1M counterparts (paired Wilcoxon). Reported as a supplementary sensitivity analysis whatever the
   outcome; the pre-specified 1M comparison remains the primary result. An equal 3M budget for all 15 runs (~45M
   steps, ~20 h on this machine) was not feasible before the deadline.
+* 02:15 update (still before any 2M result): extended to an equal 2M-step budget for all three paradigms and all
+  5 seeds (15 runs), run in balanced order (one seed per paradigm per round). Reported alongside the 1M comparison
+  with the same statistics; no 3M runs for any single paradigm (an unequal budget between the learned variants is
+  exactly what the reviewers criticised).
