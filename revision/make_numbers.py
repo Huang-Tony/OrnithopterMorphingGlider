@@ -150,7 +150,9 @@ def main():
     av = J("alloc_variants.json")
     if av:
         put("PsNConfigs", len(av["grid"]), "{:d}")
-        put("PsTuneFailMin", 100 * av["tuning_failure_range"][0], "{:.0f}"); put("PsTuneFailMax", 100 * av["tuning_failure_range"][1], "{:.0f}")
+        robust = [r for r in av["grid"] if r["nominal"]["failure"] <= 0.1 and r["randomized"]["failure"] <= 0.1]
+        put("PsNRobust", len(robust), "{:d}")
+        put("PsRobustBestObj", min(r["objective"] for r in robust) if robust else None, "{:.2f}")
         sel = av["selected"]
         put("PsSelSz", sel["sz0"], "{:.2f}"); put("PsSelSy", sel["sy0"], "{:.2f}")
         put("PsSelMode", "bank-to-turn" if sel["bank_frac"] > 0 else "skid-to-turn")
