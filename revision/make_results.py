@@ -292,7 +292,10 @@ def tuning_table():
     for n in ["Heuristic", "Alloc-ML", "PID", "GS-PID", "LQR", "MPC"]:
         t = ct.get(n)
         if not t or "stage1_best" not in t: continue
-        sel = ", ".join(f"{k.replace('_', chr(92) + '_')} = {v:.3g}" for k, v in sorted(t["selected"].items()))
+        SYM = {"scale": "$s$", "gain": "$g$", "x_range": "$x_r$", "roll_gain": "$k_\\phi$", "k_att": "$g_{\\mathrm{att}}$",
+               "bank_max_deg": "$\\phi_{\\max}$", "k_yaw": "$g_{\\mathrm{yaw}}$"}
+        UNIT = {"scale": "~m", "x_range": "~m", "bank_max_deg": "$^\\circ$"}
+        sel = ", ".join(f"{SYM.get(k, k)} = {v:.3g}{UNIT.get(k, '')}" for k, v in sorted(t["selected"].items()))
         pts = sorted([r["rms_h"] for r in t["grid"] + t["refinement"]])
         best = t["selected_rms_h"]
         plateau = 100 * (np.mean(pts[1:4]) - best) / best if len(pts) >= 4 else float("nan")   # next 3 best points
@@ -300,7 +303,7 @@ def tuning_table():
         at_bound = [k for k, v in t["selected"].items() if k in BOUNDS and (abs(math.log(v / BOUNDS[k][0])) < 0.02
                                                                               or abs(math.log(v / BOUNDS[k][1])) < 0.02)]
         lines.append(f"{label(n)} & {t['stage1_best']['rms_h']:.3f} & {100 * t['stage1_best']['failure']:.0f} & "
-                     f"{best:.3f} & {100 * fsel:.0f} & {plateau:.1f} & {', '.join(a.replace('_', chr(92) + '_') for a in at_bound) or '--'} & {sel}\\\\")
+                     f"{best:.3f} & {100 * fsel:.0f} & {plateau:.1f} & {', '.join(SYM.get(a, a) for a in at_bound) or '--'} & {sel}\\\\")
         tg = {"Heuristic": "Heur", "Alloc-ML": "Alloc", "PID": "Pid", "GS-PID": "Gspid", "LQR": "Lqr", "MPC": "Mpc"}[n]
         mac[f"Tune{tg}Grid"] = f"{t['stage1_best']['rms_h']:.3f}"; mac[f"Tune{tg}Ref"] = f"{best:.3f}"
         mac[f"Tune{tg}GridFail"] = f"{100 * t['stage1_best']['failure']:.0f}"; mac[f"Tune{tg}RefFail"] = f"{100 * fsel:.0f}"
