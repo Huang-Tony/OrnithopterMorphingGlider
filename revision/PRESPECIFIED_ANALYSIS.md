@@ -24,3 +24,17 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   anti-windup, tuned bank limit) after its v2 structure departed on the v3 airframe; all design iterations used the
   tuning seeds only. The redesign is disclosed in the response to the reviewers.
 * Small-test auto-continue rule: see revision/smalltest.py (added 21:37).
+
+
+## Note 2026-11-07 23:10 (after the small test; no change to the pre-specified comparison)
+
+* Small test (22:40): GO, auto-continue = true. SAC RMS@H 0.137 / 0.168 vs best classical (Heuristic) 0.325 / 0.396.
+* Alloc-ML departed in 50/50 nominal small-test episodes (attitude limit, 2-7 s). Diagnosis (tuning seeds and
+  static analysis only, revision/lateral_derivatives.py): the bowed spar gives a destabilising roll-due-to-sideslip
+  (Cl_beta_NED = +0.18/rad) that exceeds the full roll authority at ~3.5 deg sideslip, and differential span (the
+  strongest roll effector in the allocation) makes N_beta negative for sideslip toward the retracted wing.
+  Raising the tips reduces |L_beta| five-fold.
+* Decision: the pre-specified Alloc-ML is kept unchanged as the benchmark (no post-hoc redesign of a baseline after
+  seeing SAC results). A supplementary variant, Alloc-PS (revision/alloc_variants.py: allocation re-identified about
+  a raised-tip operating point, 72 configurations, selected on the tuning seeds with the standard objective), is
+  reported separately in the appendix with its evaluation-episode performance, whatever the outcome.
