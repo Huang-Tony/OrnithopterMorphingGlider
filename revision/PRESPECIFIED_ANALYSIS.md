@@ -38,3 +38,12 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   seeing SAC results). A supplementary variant, Alloc-PS (revision/alloc_variants.py: allocation re-identified about
   a raised-tip operating point, 72 configurations, selected on the tuning seeds with the standard objective), is
   reported separately in the appendix with its evaluation-episode performance, whatever the outcome.
+
+
+## Note 2026-11-08 02:00 (declared before any 2M-step result existed)
+
+* Budget sensitivity (revision/budget_sensitivity.py): flat SAC (seeds 7, 107) and curriculum SAC (seeds 17, 117)
+  retrained from scratch with an equal 2M-step budget, evaluated on the same evaluation episodes, compared per seed
+  with their 1M counterparts (paired Wilcoxon). Reported as a supplementary sensitivity analysis whatever the
+  outcome; the pre-specified 1M comparison remains the primary result. An equal 3M budget for all 15 runs (~45M
+  steps, ~20 h on this machine) was not feasible before the deadline.
