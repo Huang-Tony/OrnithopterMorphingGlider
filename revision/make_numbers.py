@@ -147,6 +147,16 @@ def main():
         put("TrimLift", pi["trim"]["lift_N"], "{:.2f}"); put("TrimDrag", pi["trim"]["drag_N"], "{:.2f}")
         put("TrimLD", pi["trim"]["L_over_D"], "{:.1f}"); put("TrimMy", pi["trim"]["M_body"][1], "{:.3f}")
     lateral_macros()
+    sa = J("strategy.json")
+    if sa:
+        for name, tag in (("SAC", "Sac"), ("Heuristic", "Heur"), ("LQR", "Lqr"), ("MPC", "Mpc"), ("PID", "Pid")):
+            st = sa["controllers"].get(name)
+            if not st or not st.get("n_segments"): continue
+            put(f"Strat{tag}R", st["r"], "{:.2f}"); put(f"Strat{tag}RPct", 100 * st["r"] / 0.6, "{:.0f}")
+            put(f"Strat{tag}Beta", abs(st["beta_deg"]), "{:.0f}"); put(f"Strat{tag}Phi", st["phi_coord_deg"], "{:.0f}")
+            put(f"Strat{tag}Ds", st["ds"], "{:.2f}"); put(f"Strat{tag}Sz", st["sz"], "{:.3f}"); put(f"Strat{tag}Sy", st["sy"], "{:.3f}")
+            if st.get("L_beta_ratio") is not None:
+                put(f"Strat{tag}LbPct", 100 * (1 - st["L_beta_ratio"]), "{:.0f}")
     av = J("alloc_variants.json")
     if av:
         put("PsNConfigs", len(av["grid"]), "{:d}")
