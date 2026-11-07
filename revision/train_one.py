@@ -55,6 +55,24 @@ def main():
         sys.exit(3)
     wall = time.time() - t0
     _finish(args, name, model, vecnorm, logs, diag, wall, model_dir, log_path)
+    _keep_final_state(resume_dir, name, clear_snapshot)
+
+
+def _keep_final_state(resume_dir, name, clear_snapshot):
+    """Keep the end-of-training snapshot (model + optimizers, replay buffer, VecNormalize, loop state; ~185 MB) in
+    revision_runs/extend/<name> so the run can later be continued to a larger budget (revision/extend_run.sh).
+    The snapshot is already written after every evaluation chunk, so this is a rename, not an extra save: no
+    additional memory. Runs after the model and logs are saved; any failure falls back to the old clean-up."""
+    try:
+        import shutil
+        dst = os.path.join(RUNS_DIR, "extend", name)
+        if os.path.exists(os.path.join(resume_dir, "state.pt")):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.rmtree(dst, ignore_errors=True)
+            os.rename(resume_dir, dst)
+            print(f"[extend] final training state kept in {dst}")
+    except Exception as e:  # never let this affect a finished run
+        print(f"[extend] could not keep the final state ({e}); clearing the snapshot")
     clear_snapshot(resume_dir)
 
 
