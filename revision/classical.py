@@ -161,13 +161,18 @@ class AllocationMultiLoop:
     """Attitude-stabilised multi-loop controller with model-based control allocation.
 
     Outer loops (desired body moments):
-        M_x* = -I_xx (k_phi * phi + k_p * p)
+        M_x* = -I_xx (k_phi * (phi - phi_ref) + k_p * p),  phi_ref = -atan(r_ref V / g)   (coordinated-turn bank;
+               positive roll raises the +y wing, positive r turns toward +y, hence the minus sign)
         M_y* = -I_yy (k_theta * (theta - theta_ref) + k_q * q),  theta_ref = theta_trim + k_V (V_ref - V) (pitch +ve nose-down)
-        M_z* =  I_zz (k_r * e_r + k_i * int e_r) + D_r * r_ref        (e_r = r_ref - r)
+        M_z* =  I_zz k_r e_r + D_r r_ref, limited to the differential-sweep authority      (e_r = r_ref - r)
+    Bank-to-turn (airframe v3): the yaw-rate integral acts through the bank reference,
+        phi_ref = -atan((r_ref + k_i int e_r) V / g),
+    so that sustained yaw rate is produced by a coordinated turn, as in standard small-UAV lateral autopilots.
     Allocation: v* = argmin ||W (B v - M*)||^2 + lam ||v||^2  s.t. box bounds on the six virtual inputs,
     with B the identified 3x6 control-effectiveness matrix; v* is mapped to the six tip offsets."""
 
-    def __init__(self, *, k_att=1.0, k_yaw=1.0, theta_ref=None, v_ref=15.0, k_v=0.04, lam=1e-3, plant=None):
+    def __init__(self, *, k_att=1.0, k_yaw=1.0, theta_ref=None, v_ref=15.0, k_v=0.04, lam=1e-3, plant=None,
+                 coordinated_turn=True, w_prio=(4.0, 2.0, 1.0), bank_max_deg=35.0):
         from scipy.optimize import lsq_linear
         self._lsq = lsq_linear
         P, B = (plant, load_plant()[1]) if plant is not None else load_plant()
@@ -180,25 +185,34 @@ class AllocationMultiLoop:
         # airspeed-hold outer loop. NOTE: in this simulator's frame (x fwd, y to the R wing, z up) the Euler
         # pitch from quat_to_euler_xyz is POSITIVE NOSE-DOWN; the steady-glide attitude is +atan(D/L).
         self.theta_trim = math.atan(1.0 / float(P["trim"]["L_over_D"])) if theta_ref is None else float(theta_ref)
-        self.v_ref = float(v_ref); self.k_v = float(k_v); self.dt = float(DT)
-        self.W = np.diag([1.0, 0.5, 2.0]); self.lam = float(lam)
+        self.v_ref = float(v_ref); self.k_v = float(k_v); self.dt = float(DT); self.ct = bool(coordinated_turn)
+        self.g = float(ph.get("g", 9.81))
+        self.W = np.diag(w_prio); self.lam = float(lam); self.bank_max = math.radians(bank_max_deg)   # attitude before yaw
+        self.k_i_bank = 0.1 * k_yaw; self.bank_rate = math.radians(45.0)    # slow integral, bank-rate limit (anti-windup)
+        curve = P.get("diff_sweep_yaw_moment_curve") or [{"Mz": 0.1}]
+        self.Mz_max = 0.8 * max(c["Mz"] for c in curve)
         self.lb = np.array([-0.35, -0.15, -0.10, -0.05, -0.15, -0.05])
         self.ub = -self.lb
         self.A_ls = np.vstack([self.W @ B, math.sqrt(self.lam) * np.eye(6)])
         self.reset()
 
-    def reset(self): self.i = 0.0
+    def reset(self): self.i = 0.0; self.phi_cmd = 0.0
 
     def predict(self, obs, state=None, episode_start=None, deterministic=True):
         o, roll, pitch = _att(obs)
         p, q, r = (float(o[OBS_IDX[k]]) for k in ("omega_p", "omega_q", "omega_r"))
         rref = float(o[OBS_IDX["yaw_ref"]]); e = rref - r
-        self.i = float(np.clip(self.i + e * self.dt, -1.5, 1.5))
+        self.i = float(np.clip(self.i + e * self.dt, -1.0, 1.0))
         V = float(o[OBS_IDX["speed"]])
         theta_ref = float(np.clip(self.theta_trim + self.k_v * (self.v_ref - V), -0.3, 0.6))   # slow -> nose down
-        Mx = -self.I[0] * (self.k_phi * roll + self.k_p * p)
+        r_cmd = rref + self.k_i_bank * self.i
+        phi_ref = -math.atan(r_cmd * max(V, 5.0) / self.g) if self.ct else 0.0
+        phi_ref = float(np.clip(phi_ref, -self.bank_max, self.bank_max))
+        step = self.bank_rate * self.dt
+        self.phi_cmd = float(np.clip(phi_ref, self.phi_cmd - step, self.phi_cmd + step)); phi_ref = self.phi_cmd
+        Mx = -self.I[0] * (self.k_phi * (roll - phi_ref) + self.k_p * p)
         My = -self.I[1] * (self.k_theta * (pitch - theta_ref) + self.k_q * q)
-        Mz = self.I[2] * (self.k_r * e + self.k_i * self.i) + self.Dr * rref
+        Mz = float(np.clip(self.I[2] * self.k_r * e + self.Dr * rref, -self.Mz_max, self.Mz_max))
         b = np.concatenate([self.W @ np.array([Mx, My, Mz]), np.zeros(6)])
         v = self._lsq(self.A_ls, b, bounds=(self.lb, self.ub), method="bvls").x
         return virtual_to_tips(v).astype(np.float32), state
@@ -220,6 +234,6 @@ TUNING_GRIDS = {
     "LQR":       [dict(scale=s, gain=g) for s in (0.15, 0.3, 0.5) for g in (0.5, 1.0, 2.0)],
     "MPC":       [dict(scale=s, gain=g) for s in (0.15, 0.3, 0.5) for g in (0.5, 1.0, 2.0)],
     "Heuristic": [dict(x_range=x, roll_gain=k) for x in (0.15, 0.25, 0.45) for k in (0.08, 0.15, 0.3)],
-    "Alloc-ML":  [dict(k_att=a, k_yaw=y) for a in (1.0, 2.0, 3.0) for y in (0.5, 1.0, 1.5)],
+    "Alloc-ML":  [dict(k_att=a, bank_max_deg=b) for a in (0.5, 1.0, 2.0) for b in (10.0, 20.0, 30.0)],
     "Zero":      [dict()],
 }
