@@ -137,6 +137,15 @@ def main():
         if cl:
             put("IntegClosedYawPct", cl["yaw_err_pct_sub4"], "{:.1f}"); put("IntegClosedRollDeg", cl["roll_err_deg_sub4"], "{:.2f}")
             put("IntegClosedPitchDeg", cl["pitch_err_deg_sub4"], "{:.2f}"); put("IntegClosedS", cl["steps"] * C.DT, "{:.0f}")
+    try:                                   # tuning table rows + macros straight from classical_tuning.json
+        from make_results import tuning_table
+        for k, v in tuning_table().items(): put(k, v)
+    except Exception as e:
+        print("tuning table skipped:", repr(e))
+    ct = J("classical_tuning.json")
+    gains = [v.get("refinement_gain") for v in (ct or {}).values() if isinstance(v, dict) and v.get("refinement_gain") is not None]
+    put("TuneGainMax", 100 * max(gains) if gains else None, "{:.1f}")
+    put("TuneGainMedian", 100 * float(np.median(gains)) if gains else None, "{:.1f}")
     logs = sorted(glob.glob(os.path.join(RUNS_DIR, "logs", "*.train.json")))
     put("ActorParams", None); put("ActorParamsMean", None)
     if logs:

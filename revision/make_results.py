@@ -285,20 +285,29 @@ def fig_robustness(rows, cls):
 
 
 def tuning_table():
-    """LaTeX rows: grid optimum, refined optimum, gain, selected parameters, failure at the selection."""
+    """LaTeX rows: grid optimum, refined optimum, gain, failure at the selection, plateau and bound checks."""
+    from refine_classical import BOUNDS
     ct = load(os.path.join(RUNS_DIR, "analysis", "classical_tuning.json")) or {}
-    lines = []
+    lines, mac = [], {}
     for n in ["Heuristic", "Alloc-ML", "PID", "GS-PID", "LQR", "MPC"]:
         t = ct.get(n)
         if not t or "stage1_best" not in t: continue
         sel = ", ".join(f"{k.replace('_', chr(92) + '_')} = {v:.3g}" for k, v in sorted(t["selected"].items()))
-        fsel = (t["stage2_best"] if t["selected"] == t["stage2_best"]["config"] else t["stage1_best"])["failure"]
-        edge = "yes" if any(t.get("stage1_best_on_grid_edge", {}).values()) else "no"
-        lines.append(f"{label(n)} & {t['stage1_best']['rms_h']:.3f} & {edge} & {t['selected_rms_h']:.3f} & "
-                     f"{100 * t['refinement_gain']:.1f} & {100 * fsel:.0f} & {sel}\\\\")
+        pts = sorted([r["rms_h"] for r in t["grid"] + t["refinement"]])
+        best = t["selected_rms_h"]
+        plateau = 100 * (np.mean(pts[1:4]) - best) / best if len(pts) >= 4 else float("nan")   # next 3 best points
+        fsel = min(t["grid"] + t["refinement"], key=lambda r: r["rms_h"])["failure"]
+        at_bound = [k for k, v in t["selected"].items() if k in BOUNDS and (abs(math.log(v / BOUNDS[k][0])) < 0.02
+                                                                              or abs(math.log(v / BOUNDS[k][1])) < 0.02)]
+        lines.append(f"{label(n)} & {t['stage1_best']['rms_h']:.3f} & {100 * t['stage1_best']['failure']:.0f} & "
+                     f"{best:.3f} & {100 * fsel:.0f} & {plateau:.1f} & {', '.join(a.replace('_', chr(92) + '_') for a in at_bound) or '--'} & {sel}\\\\")
+        tg = {"Heuristic": "Heur", "Alloc-ML": "Alloc", "PID": "Pid", "GS-PID": "Gspid", "LQR": "Lqr", "MPC": "Mpc"}[n]
+        mac[f"Tune{tg}Grid"] = f"{t['stage1_best']['rms_h']:.3f}"; mac[f"Tune{tg}Ref"] = f"{best:.3f}"
+        mac[f"Tune{tg}GridFail"] = f"{100 * t['stage1_best']['failure']:.0f}"; mac[f"Tune{tg}RefFail"] = f"{100 * fsel:.0f}"
+        mac[f"Tune{tg}Plateau"] = f"{plateau:.1f}"
     os.makedirs(FIG, exist_ok=True)
     open(os.path.join(FIG, "tab_tuning_rows.tex"), "w").write("\n".join(lines) + "\n")
-    return lines
+    return mac
 
 
 def main():
@@ -337,7 +346,7 @@ def main():
     out["macros"] = mac
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "results_summary.json"))
     fig_performance(S); fig_extended(S); fig_timehistory(data); fig_learning()
-    rows, cls = robust_rows(); fig_robustness(rows, cls); tuning_table()
+    rows, cls = robust_rows(); fig_robustness(rows, cls); mac.update(tuning_table())
     rob = {f"{n}|{c}": v for (n, c), v in rows.items()}; out["robustness"] = rob
     for (n, c), v in rows.items():
         if c.startswith("env_"): continue
