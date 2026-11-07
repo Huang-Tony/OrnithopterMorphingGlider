@@ -115,6 +115,11 @@ def main():
         put("IntegErrYawPctCoarse", max(c["yaw_err_pct_sub1"] for c in mv["integration"].values()), "{:.1f}")
         put("IntegErrRollDeg", max(c["roll_err_deg_sub4"] for c in mv["integration"].values()), "{:.2f}")
         put("SparEBcorr", mv["spar_energy"].get("correlation"), "{:.4f}")
+    logs = sorted(glob.glob(os.path.join(RUNS_DIR, "logs", "*.train.json")))
+    if logs:
+        lg = json.load(open(logs[0]))
+        put("ActorParams", f"{lg['actor_params']:,}".replace(",", "{,}"))
+        put("ActorParamsMean", f"{lg['actor_params_without_logstd_head']:,}".replace(",", "{,}"))
     # ---- training configuration ----
     put("TotalSteps", TOTAL_STEPS / 1e6, "{:.0f}"); put("NEnvs", N_ENVS, "{:d}"); put("EvalEvery", EVAL_EVERY / 1e3, "{:.0f}")
     put("TrainEvalEps", TRAIN_EVAL_EPS, "{:d}"); put("FinalEvalEps", FINAL_EVAL_EPS, "{:d}"); put("NSeeds", len(TRAIN_SEEDS), "{:d}")

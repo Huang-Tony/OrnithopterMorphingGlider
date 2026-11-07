@@ -227,8 +227,21 @@ class MorphingGliderEnv6DOF(gym.Env):
         self.p3_cmd_R = np.array([a[0], +L_FIXED + a[1], a[2]])
         self.p3_cmd_L = np.array([a[3], -L_FIXED + a[4], a[5]])
         alpha_act = 1.0 - math.exp(-self.dt / self.act_tau)
-        self.p3_R += alpha_act * (self.p3_cmd_R - self.p3_R)
-        self.p3_L += alpha_act * (self.p3_cmd_L - self.p3_L)
+        wn = float(getattr(self, "act_wn", 0.0))
+        if wn <= 0.0:       # default: first-order actuator lag
+            self.p3_R += alpha_act * (self.p3_cmd_R - self.p3_R)
+            self.p3_L += alpha_act * (self.p3_cmd_L - self.p3_L)
+        else:               # revision R1 stress test: servo lag in series with a lightly damped structural mode
+            if not hasattr(self, "_servo_R") or self.current_step <= 1:
+                self._servo_R = self.p3_R.copy(); self._servo_L = self.p3_L.copy()
+                self._p3dot_R = np.zeros(3); self._p3dot_L = np.zeros(3)
+            self._servo_R += alpha_act * (self.p3_cmd_R - self._servo_R)
+            self._servo_L += alpha_act * (self.p3_cmd_L - self._servo_L)
+            z = float(getattr(self, "act_zeta", 0.1)); h_a = self.dt / 8
+            for _ in range(8):
+                for x, v, s in ((self.p3_R, self._p3dot_R, self._servo_R), (self.p3_L, self._p3dot_L, self._servo_L)):
+                    v += (wn * wn * (s - x) - 2.0 * z * wn * v) * h_a
+                    x += v * h_a
         self.p3_R[0] = np.clip(self.p3_R[0], DX_RANGE[0], DX_RANGE[1])
         self.p3_R[1] = np.clip(self.p3_R[1], L_FIXED + DY_RANGE[0], L_FIXED + DY_RANGE[1])
         self.p3_R[2] = np.clip(self.p3_R[2], DZ_RANGE[0], DZ_RANGE[1])
