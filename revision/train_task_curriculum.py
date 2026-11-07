@@ -21,7 +21,9 @@ from common import (RUNS_DIR, N_ENVS, MAX_STEPS_EP, EVAL_EVERY, TRAIN_EVAL_EPS, 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--algo", required=True, choices=["task_curriculum", "residual_task_curriculum"])
+    ap.add_argument("--algo", required=True, choices=["task_curriculum", "residual_task_curriculum", "flat_modeaware",
+                                                     "task_curriculum_modeaware"])
+    ap.add_argument("--mode-prob", type=float, default=None, help="probability of a randomized wing mode per episode")
     ap.add_argument("--seed", required=True, type=int)
     ap.add_argument("--steps", type=int, default=TOTAL_STEPS)
     ap.add_argument("--n-envs", type=int, default=N_ENVS)
@@ -38,7 +40,7 @@ def main():
 
     import numpy as np
     from morphing_glider.config import seed_everything
-    from morphing_glider.training.task_curriculum import train_task_curriculum_sac
+    from morphing_glider.training.task_curriculum import train_task_curriculum_sac, TASK_SCHEDULE, FLAT_SCHEDULE
     from morphing_glider.training.callbacks import TrainingDiagnosticsCallback
     from morphing_glider.training.infrastructure import save_model_and_vecnorm, save_training_checkpoint
     from morphing_glider.training.resume import PauseRequested, clear_snapshot
@@ -53,6 +55,8 @@ def main():
             total_timesteps=args.steps, seed=args.seed, n_envs=args.n_envs, max_steps=MAX_STEPS_EP,
             eval_every_steps=args.eval_every, eval_episodes=args.eval_eps, eval_seed_base=EVAL_SEED_BASE,
             use_residual=(args.algo == "residual_task_curriculum"), callback=diag,
+            schedule=(FLAT_SCHEDULE if args.algo.startswith("flat") else TASK_SCHEDULE),
+            mode_prob=(args.mode_prob if args.mode_prob is not None else (0.5 if "modeaware" in args.algo else 0.0)),
             resume_dir=resume_dir, pause_file=pause_file)
     except PauseRequested as e:
         print(f"[paused] {name}: {e}. Snapshot in {resume_dir}."); sys.exit(3)

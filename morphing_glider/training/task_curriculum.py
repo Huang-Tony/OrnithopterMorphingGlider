@@ -33,11 +33,30 @@ TASK_SCHEDULE = [
     dict(name="tc3_large_refs", frac=0.20, targets=(-0.45, -0.3, 0.0, 0.3, 0.45), rand=0.67, hold=tuple(HOLD_RANGE_STEPS)),
     dict(name="tc4_target_task", frac=0.55, targets=tuple(DEFAULT_YAW_TARGETS), rand=1.0, hold=tuple(HOLD_RANGE_STEPS)),
 ]
+FLAT_SCHEDULE = [dict(name="flat_target_task", frac=1.0, targets=tuple(DEFAULT_YAW_TARGETS), rand=1.0, hold=tuple(HOLD_RANGE_STEPS))]
 RESIDUAL_LIMIT = np.array([0.25, 0.12, 0.15, 0.25, 0.12, 0.15], dtype=float)   # final limit of the original curriculum
 
 
 class TaskScheduleWrapper(gym.Wrapper):
-    """Outermost wrapper; set_task() changes only the exogenous task distribution of the underlying env."""
+    """Outermost wrapper; set_task() changes only the exogenous task distribution of the underlying env.
+
+    Optional structural-mode randomization (mode_prob > 0): at every reset, with probability mode_prob a lightly
+    damped second-order actuator-wing mode (natural frequency f_n ~ U(mode_fn_hz), damping ~ U(mode_zeta)) is placed
+    between the servo lag and the tip (env.act_wn / act_zeta, the same model as the 'struct_mode' robustness test);
+    otherwise the nominal first-order lag is used. This exposes the policy to the measured wing mode during training."""
+
+    def __init__(self, env, mode_prob=0.0, mode_fn_hz=(2.0, 4.0), mode_zeta=(0.05, 0.15)):
+        super().__init__(env)
+        self.mode_prob = float(mode_prob); self.mode_fn_hz = tuple(mode_fn_hz); self.mode_zeta = tuple(mode_zeta)
+
+    def reset(self, **kwargs):
+        if self.mode_prob > 0.0:
+            b = self.env.unwrapped; rng = b.np_random if hasattr(b, "np_random") else np.random
+            if float(rng.uniform()) < self.mode_prob:
+                b.act_wn = 2 * np.pi * float(rng.uniform(*self.mode_fn_hz)); b.act_zeta = float(rng.uniform(*self.mode_zeta))
+            else:
+                b.act_wn = 0.0
+        return self.env.reset(**kwargs)
 
     def set_task(self, targets: Sequence[float], rand_scale: float, hold) -> bool:
         b = self.env.unwrapped
@@ -55,7 +74,7 @@ def phase_boundaries(total: int, schedule=TASK_SCHEDULE):
     return ends
 
 
-def _build_env(*, seed, n_envs, max_steps, use_residual, prev_obs_rms=None, first_phase=None):
+def _build_env(*, seed, n_envs, max_steps, use_residual, prev_obs_rms=None, first_phase=None, mode_prob=0.0):
     from stable_baselines3.common.monitor import Monitor
     from stable_baselines3.common.vec_env import VecNormalize
     from morphing_glider.training import infrastructure as inf
@@ -76,7 +95,7 @@ def _build_env(*, seed, n_envs, max_steps, use_residual, prev_obs_rms=None, firs
                 env = ResidualHeuristicWrapper(env, heuristic=heur, residual_limit=RESIDUAL_LIMIT,
                                                action_space_limit=RESIDUAL_LIMIT)
             env = ProgressiveTwistWrapper(env, phase=phase_dict, twist_factor=1.0, reward_shaper=None, ramp_steps=0)
-            env = TaskScheduleWrapper(env)
+            env = TaskScheduleWrapper(env, mode_prob=mode_prob)
             if first_phase is not None:
                 env.set_task(first_phase["targets"], first_phase["rand"], first_phase["hold"])
             return env
@@ -94,7 +113,7 @@ def _build_env(*, seed, n_envs, max_steps, use_residual, prev_obs_rms=None, firs
 
 
 def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_every_steps, eval_episodes,
-                              eval_seed_base, use_residual=False, schedule=TASK_SCHEDULE, callback=None,
+                              eval_seed_base, use_residual=False, schedule=TASK_SCHEDULE, callback=None, mode_prob=0.0,
                               resume_dir: Optional[str] = None, pause_file: Optional[str] = None):
     from morphing_glider.evaluation import evaluate_controller, summarize_metrics
     from morphing_glider.config import DEVICE
@@ -105,7 +124,8 @@ def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_
     from stable_baselines3 import SAC
     from stable_baselines3.common.callbacks import CallbackList
 
-    algo = "residual_task_curriculum" if use_residual else "task_curriculum"
+    algo = ("residual_task_curriculum" if use_residual else "task_curriculum") if len(schedule) > 1 else "flat"
+    if mode_prob > 0: algo += "_modeaware"
     ends = phase_boundaries(total_timesteps, schedule)
     logs: Dict[str, Any] = {"evaltrace": [], "eval_details": [], "phase_boundaries": [],
                             "phases": [dict(p, targets=list(p["targets"]), hold=list(p["hold"]), end_step=e)
@@ -131,14 +151,14 @@ def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_
     try:
         if snap is None:
             vec, vecnorm = _build_env(seed=seed + 3000, n_envs=n_envs, max_steps=max_steps, use_residual=use_residual,
-                                      first_phase=schedule[0])
+                                      first_phase=schedule[0], mode_prob=mode_prob)
             model = build_sac_model_baseline(vec, seed=seed, tensorboard_log=f"tb_{algo}")
             apply_phase(0)
         else:
             S.update(snap["state"]); logs = S["logs"]
             vec, vecnorm = _build_env(seed=seed + 3000 + 7919 * (len(logs.get("resumes", [])) + 1), n_envs=n_envs,
                                       max_steps=max_steps, use_residual=use_residual, prev_obs_rms=S.get("obs_rms"),
-                                      first_phase=schedule[int(S.get("phase", 0))])
+                                      first_phase=schedule[int(S.get("phase", 0))], mode_prob=mode_prob)
             if vecnorm is not None and S.get("obs_rms") is not None:
                 vecnorm.obs_rms = copy.deepcopy(S["obs_rms"])
             model = SAC.load(snap["model"], env=vec, device=DEVICE)
