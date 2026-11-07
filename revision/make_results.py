@@ -328,6 +328,11 @@ def main():
     # macros for the manuscript
     mac = {}
     def fm(v, f="{:.3f}"): return "\\textbf{??}" if v is None or not np.isfinite(v) else f.format(v)
+    def pfm(v):   # p-value in LaTeX math, e.g. 3.4\times10^{-41}
+        if v is None or not np.isfinite(v): return "\\textbf{??}"
+        if v >= 1e-3: return f"{v:.3f}"
+        e = int(math.floor(math.log10(v))); m = v / 10 ** e
+        return f"{m:.1f}\\times10^{{{e}}}"
     tag = {"baseline": "Base", "curriculum": "Curr", "residual_curriculum": "Resid", "KAN student": "Kan", "Alloc-ML": "Alloc",
            "Heuristic": "Heur", "PID": "Pid", "GS-PID": "Gspid", "LQR": "Lqr", "MPC": "Mpc", "Zero": "Zero"}
     for key, row in S.items():
@@ -342,11 +347,11 @@ def main():
     for cond in CONDITIONS:
         c = "Nom" if cond == "nominal" else "Rand"; t = tests[f"baseline_vs_best_classical|{cond}"]
         mac[f"RBestClassical{c}"] = str(t.get("best"))
-        mac[f"RRatioBest{c}"] = fm(t.get("ratio", np.nan), "{:.2f}"); mac[f"RPBest{c}"] = fm(t.get("p_wilcoxon", np.nan), "{:.1e}")
+        mac[f"RRatioBest{c}"] = fm(t.get("ratio", np.nan), "{:.2f}"); mac[f"RPBest{c}"] = pfm(t.get("p_wilcoxon", np.nan))
         mac[f"RRedBest{c}"] = fm(100 * (1 - t.get("ratio", np.nan)), "{:.0f}"); mac[f"RFactorBest{c}"] = fm(1 / t.get("ratio", np.nan), "{:.1f}")
         for other, o in (("curriculum", "Curr"), ("residual_curriculum", "Resid")):
             t2 = tests.get(f"baseline_vs_{other}|{cond}") or {}
-            mac[f"RPBaseVs{o}{c}"] = fm(t2.get("p_mannwhitney", np.nan), "{:.2f}"); mac[f"RDBaseVs{o}{c}"] = fm(t2.get("cohen_d", np.nan), "{:.2f}")
+            mac[f"RPBaseVs{o}{c}"] = pfm(t2.get("p_mannwhitney", np.nan)); mac[f"RDBaseVs{o}{c}"] = fm(t2.get("cohen_d", np.nan), "{:.2f}")
     out["macros"] = mac
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "results_summary.json"))
     fig_performance(S); fig_extended(S); fig_timehistory(data); fig_learning()
