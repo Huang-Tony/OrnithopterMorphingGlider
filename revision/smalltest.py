@@ -8,7 +8,7 @@ PARTIAL if the criteria hold in only one condition, or the 20% margin holds with
 NO-GO   otherwise.
 SAC evaluations are written to eval_final/ (they are 2 of the 5 final seeds).
 
-AUTO-CONTINUE (added 2026-11-07 22:10 for airframe v3, before any v3 result was seen; this is the evidence the
+AUTO-CONTINUE (added 2026-11-07 21:37 for airframe v3, before any v3 result was seen; this is the evidence the
 author accepted for the v2 PARTIAL verdict): the remaining runs start automatically if the verdict is GO, or if in
 BOTH conditions (i) SAC mean RMS@H < best classical mean, (ii) for EACH SAC seed a one-sided paired Wilcoxon
 signed-rank test against the best classical controller on the same 50 evaluation episodes gives p < 0.01, and
