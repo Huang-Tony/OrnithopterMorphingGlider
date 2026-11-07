@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Model verification for the revised manuscript:
-1. time-integration error of the 4 x 10 ms substep scheme and of a single 40 ms step against a 1 ms reference,
+1. time-integration error of the 4 x 10 ms substep scheme and of a single 40 ms step against a 0.5 ms reference,
    under bounded multi-channel morphing inputs (open loop, no gusts or noise);
 2. correlation of the Bezier control-polygon energy with Euler-Bernoulli bending energy (package validator);
 3. figure fig_authority (yaw-moment map of single-wing deflection, differential-sweep saturation).
@@ -46,8 +46,10 @@ def integration_check():
                                          -0.02 * math.sin(0.9 * t * 0.04 * 6.28)]),
     }
     res = {}
+    A = 0.35   # input scale (airframe v3 rolls ~1.7x faster than v2; keeps the open-loop runs below 89 deg longer)
+    cases = {k: (lambda t, f=f: A * f(t)) for k, f in cases.items()}
     for name, fn in cases.items():
-        ref = rollout(fn, 40); sub = rollout(fn, 4); one = rollout(fn, 1)
+        ref = rollout(fn, 80); sub = rollout(fn, 4); one = rollout(fn, 1)
         n = min(len(ref), len(sub), len(one))
         amp = np.sqrt(np.mean(ref[:n, 2] ** 2))
         res[name] = {"steps": int(n), "yaw_rate_rms_ref": float(amp),

@@ -9,7 +9,9 @@ Model mismatch (beyond the training distribution unless noted):
   mass_inertia           mass x1.4, inertia x1.6 (randomization covers +-25 % / +-35 %)
   gusts_x2               gust intensities x2
   noise_x3               sensor noise x3
-  damping_low            lumped rotational damping x0.25 (randomization covers +-50 %)
+  airframe_v2            the lumped rigid-body parameters of the v1/v2 airframe (Ixx = Iyy = 0.25, Izz = 0.12 kg m^2,
+                         d_roll = d_pitch = 2.8, d_yaw = 0.25 N m s/rad, no static-margin offset or reflex)
+  cg_aft                 static margin 3 % (randomization covers ~7-13 %)
 Reference envelope: the reference alternates between +v and -v, v in {0.15, ..., 0.90} rad/s.
 Policies: baseline SAC (all seeds, 20 episodes each) and the two best classical controllers (60 episodes).
 Outputs: revision_runs/eval_robust/<tag>.{json,npz}
@@ -40,7 +42,9 @@ CONDS = {
     "mass_inertia": {"phys_override": {"mass": "x1.4", "Ixx": "x1.6", "Iyy": "x1.6", "Izz": "x1.6"}},
     "gusts_x2": {"phys_override": {"gust_sigma_x": "x2", "gust_sigma_y": "x2", "gust_sigma_z": "x2"}},
     "noise_x3": {"sensor_noise_scale": 3.0},
-    "damping_low": {"phys_override": {"d_roll": "x0.25", "d_pitch": "x0.25", "d_yaw": "x0.25"}},
+    "airframe_v2": {"phys_override": {"Ixx": 0.25, "Iyy": 0.25, "Izz": 0.12, "d_roll": 2.8, "d_pitch": 2.8,
+                                      "d_yaw": 0.25, "x_cg": 0.0, "cm0": 0.0}},
+    "cg_aft": {"phys_override": {"x_cg": 0.0128 - 0.07 * 0.15}},
 }
 ENVELOPE = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
 

@@ -8,7 +8,7 @@ class AeroProxy3D:
     def __init__(self, *, num_panels=12, include_omega_cross=True):
         self.N = int(num_panels); self.include_omega_cross = bool(include_omega_cross)
         self.u = ((np.arange(self.N, dtype=float)+0.5)/self.N).reshape(-1,1)
-        self.area = (L_FIXED/self.N)*WING_CHORD; self.x_axis = np.array([1.0,0.0,0.0])
+        self.area = (L_FIXED/self.N)*WING_CHORD; self.chord = WING_CHORD; self.x_axis = np.array([1.0,0.0,0.0])
 
     def calculate_forces(self, spar, *, v_rel_body, omega_body, phys):
         pos = spar.evaluate(self.u); tan = spar.tangent(self.u)
@@ -20,8 +20,14 @@ class AeroProxy3D:
         # vector points toward -y, so c x span points down; the geometric AoA and lift direction flip
         # consistently, but the camber offset alpha0 was then added with the opposite sign on that wing,
         # producing zero net lift at alpha=0 and a spurious +2.3 N*m rolling moment (v1 bug).
-        if float(spar.p3[1]) < 0.0:
+        sigma = -1.0 if float(spar.p3[1]) < 0.0 else 1.0
+        if sigma < 0.0:
             n = -n
+        # Airframe v3 (revision R1): loads are referred to the centre of gravity, which lies x_cg ahead of the
+        # spar (the aerodynamic reference line); x_cg = 0 reproduces the v1/v2 airframe exactly.
+        x_cg = float(phys.get("x_cg", 0.0))
+        if x_cg != 0.0:
+            pos = pos - np.array([x_cg, 0.0, 0.0])
         omega = np.asarray(omega_body, dtype=float).reshape(3); v_rel = np.asarray(v_rel_body, dtype=float).reshape(3)
         if self.include_omega_cross: v_local = v_rel[None,:] + np.cross(omega[None,:], pos)
         else: v_local = np.broadcast_to(v_rel[None,:], pos.shape).copy()
@@ -50,6 +56,9 @@ class AeroProxy3D:
         lift = ls*q_dyn*self.area*CL; drag = q_dyn*self.area*CD
         F = lift[:,None]*lift_dir + drag[:,None]*(-v_hat)
         total_force = np.sum(F, axis=0); moments = np.cross(pos, F); total_moment = np.sum(moments, axis=0)
+        cm0 = float(phys.get("cm0", 0.0))
+        if cm0 != 0.0:   # section zero-lift pitching moment about each strip's own span axis (+cm0 = nose-up)
+            total_moment = total_moment - np.sum((sigma * cm0 * q_dyn * self.area * self.chord)[:, None] * span, axis=0)
         power = -np.sum(np.sum(F*v_local, axis=1)); power_loss = float(max(0.0, power))
         diag = dict(total_drag_force=float(np.sum(drag)), total_lift_force=float(np.sum(lift)),
                      mean_alpha=float(np.mean(alpha)), mean_abs_alpha=float(np.mean(np.abs(alpha))),

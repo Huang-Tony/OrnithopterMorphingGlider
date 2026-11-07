@@ -12,8 +12,13 @@ NOMINAL_PHYS = {
     "cl_sat_n": 26.61, "post_stall_cl_factor": 0.707,
     "alpha0": 0.0235, "alpha_clip": 0.40, "alpha_stall": 0.318, "cd_stall": 0.45,
     "lift_scale": 1.0,
-    "Ixx": 0.25, "Iyy": 0.25, "Izz": 0.120,
-    "d_roll": 2.8, "d_pitch": 2.8, "d_yaw": 0.25,
+    # Airframe v3 (revision R1): mass properties from a component build-up, pitch damping from thin-airfoil
+    # theory, CG at a 10 % static margin, reflex trim (revision/derive_airframe.py -> analysis/airframe_v3.json).
+    # Roll/yaw rate damping is resolved by the strip model, so no lumped term is added.
+    # v1/v2 lumped values: Ixx = Iyy = 0.25, Izz = 0.12 kg m^2; d_roll = d_pitch = 2.8, d_yaw = 0.25 N m s/rad.
+    "Ixx": 0.0534, "Iyy": 0.00421, "Izz": 0.0576,
+    "d_roll": 0.0, "d_pitch": 0.0244, "d_yaw": 0.0,
+    "x_cg": 0.0128, "cm0": -0.00286,
     "wind_x": 0.0, "wind_y": 0.0, "wind_z": 0.0,
     "gust_tau": 0.8, "gust_sigma_x": 0.5, "gust_sigma_y": 1.0, "gust_sigma_z": 0.6,
     "imu_omega_noise": 0.01, "imu_angle_noise": 0.003, "airspeed_noise": 0.15, "alt_noise": 0.20,
@@ -46,4 +51,5 @@ class DomainRandomizer:
         base["imu_angle_noise"]=float(base["imu_angle_noise"]*(1.0+1.2*s))
         base["airspeed_noise"]=float(base["airspeed_noise"]*(1.0+1.0*s))
         base["alt_noise"]=float(base["alt_noise"]*(1.0+1.0*s))
+        base["x_cg"]=uni_rel(base["x_cg"],0.30)     # CG uncertainty: static margin ~7-13 %
         return base

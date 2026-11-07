@@ -7,6 +7,13 @@ GO      if, in BOTH nominal and randomized conditions, baseline SAC (seeds 7 and
 PARTIAL if the criteria hold in only one condition, or the 20% margin holds without CI separation.
 NO-GO   otherwise.
 SAC evaluations are written to eval_final/ (they are 2 of the 5 final seeds).
+
+AUTO-CONTINUE (added 2026-11-07 22:10 for airframe v3, before any v3 result was seen; this is the evidence the
+author accepted for the v2 PARTIAL verdict): the remaining runs start automatically if the verdict is GO, or if in
+BOTH conditions (i) SAC mean RMS@H < best classical mean, (ii) for EACH SAC seed a one-sided paired Wilcoxon
+signed-rank test against the best classical controller on the same 50 evaluation episodes gives p < 0.01, and
+(iii) the SAC failure rate exceeds the best classical rate by at most 3 percentage points. Otherwise the pipeline
+stops for the author.
 """
 
 import glob
@@ -63,10 +70,22 @@ def main():
         ci_ok = sac["rms_h"]["hi"] < b["rms_h"]["lo"]
         fail_ok = sac["failure"] <= b["failure"] + 1e-12
         verdict = "GO" if (margin_ok and ci_ok and fail_ok) else ("PARTIAL" if (margin_ok or ci_ok) else "NO-GO")
+        from scipy.stats import wilcoxon
+        cl_eps = json.load(open(os.path.join(EVAL_DIR, f"classical_{best}_{cond}.json")))["episodes"]
+        paired = {}
+        for s_ in (7, 107):
+            se = json.load(open(os.path.join(EVAL_DIR, f"sac_baseline_seed{s_}_{cond}.json")))["episodes"]
+            a = np.array([e["rms_yaw_horizon"] for e in se]); b_ = np.array([e["rms_yaw_horizon"] for e in cl_eps])
+            n = min(len(a), len(b_)); d = a[:n] - b_[:n]
+            paired[str(s_)] = {"p_one_sided": float(wilcoxon(d, alternative="less").pvalue),
+                               "frac_sac_better": float(np.mean(d < 0)), "n": int(n)}
+        auto_ok = (sac["rms_h"]["mean"] < b["rms_h"]["mean"] and all(v["p_one_sided"] < 0.01 for v in paired.values())
+                   and sac["failure"] <= b["failure"] + 0.03 + 1e-12)
         verdicts.append(verdict)
         out["conditions"][cond] = {"sac_baseline": sac, "classical": classical, "best_classical": best,
                                    "margin_ok": margin_ok, "ci_ok": ci_ok, "failure_ok": fail_ok, "verdict": verdict,
-                                   "rms_ratio_sac_over_best": sac["rms_h"]["mean"] / b["rms_h"]["mean"]}
+                                   "rms_ratio_sac_over_best": sac["rms_h"]["mean"] / b["rms_h"]["mean"],
+                                   "paired_wilcoxon": paired, "auto_continue_ok": bool(auto_ok)}
         print(f"\n== {cond}: SAC RMS@H {sac['rms_h']['mean']:.3f} [{sac['rms_h']['lo']:.3f},{sac['rms_h']['hi']:.3f}] "
               f"fail {100*sac['failure']:.1f}%")
         for k, v in sorted(classical.items(), key=lambda kv: kv[1]["rms_h"]["mean"]):
@@ -75,6 +94,8 @@ def main():
               f"margin={margin_ok} CI={ci_ok} failure={fail_ok} -> {verdict}")
     overall = "GO" if all(v == "GO" for v in verdicts) else ("NO-GO" if all(v == "NO-GO" for v in verdicts) else "PARTIAL")
     out["overall"] = overall
+    out["auto_continue"] = bool(overall == "GO" or all(c["auto_continue_ok"] for c in out["conditions"].values()))
+    print("paired:", {c: v["paired_wilcoxon"] for c, v in out["conditions"].items()}, "auto_continue:", out["auto_continue"])
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "smalltest_decision.json"))
     print(f"\nOVERALL: {overall}")
 
