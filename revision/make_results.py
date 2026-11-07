@@ -341,7 +341,10 @@ def main():
                                 ("mean_settle_time", "Settle", "{:.2f}", 1), ("rms_roll_deg", "Roll", "{:.1f}", 1), ("mean_energy_loss_rate_W", "Energy", "{:.2f}", 1),
                                 ("mean_sink_rate_mps", "Sink", "{:.2f}", 1), ("mean_tip_speed_mps", "TipSpeed", "{:.3f}", 1),
                                 ("mean_tip_displacement_m", "TipDisp", "{:.3f}", 1), ("mean_ctrl_latency_ms", "Lat", "{:.2f}", 1),
-                                ("mean_sq_action_increment", "Jerk", "{:.4f}", 1), ("rms_yaw_survived", "RmsSurv", "{:.3f}", 1)):
+                                ("mean_sq_action_increment", "Jerk", "{:.4f}", 1), ("rms_yaw_survived", "RmsSurv", "{:.3f}", 1),
+                                ("hf_action_power_frac_2Hz", "Hf", "{:.0f}", 100), ("rms_roll_rate_dps", "RollRate", "{:.1f}", 1),
+                                ("mean_aero_power_W", "AeroPow", "{:.2f}", 1), ("mean_struct_energy_norm", "Strain", "{:.3f}", 1),
+                                ("mean_airspeed_mps", "Airspeed", "{:.1f}", 1)):
             m, lo, hi = row[k]
             mac[f"R{tag[n]}{c}{short}"] = fm(m * sc, f); mac[f"R{tag[n]}{c}{short}Lo"] = fm(lo * sc, f); mac[f"R{tag[n]}{c}{short}Hi"] = fm(hi * sc, f)
     for cond in CONDITIONS:
@@ -358,7 +361,10 @@ def main():
     rows, cls = robust_rows(); fig_robustness(rows, cls); mac.update(tuning_table())
     rob = {f"{n}|{c}": v for (n, c), v in rows.items()}; out["robustness"] = rob
     for (n, c), v in rows.items():
-        if c.startswith("env_"): continue
+        if c.startswith("env_"):
+            key = f"Env{int(round(100 * float(c[4:]))):03d}"; who = "Sac" if n == "SAC" else tag.get(n, n)
+            mac[f"Rob{who}{key}Rmsh"] = fm(v["rms_yaw_horizon"][0]); mac[f"Rob{who}{key}Fail"] = fm(100 * v["failure"][0], "{:.0f}")
+            continue
         key = "".join(w.capitalize() for w in c.replace("x", "X").split("_")); who = "Sac" if n == "SAC" else tag.get(n, n)
         mac[f"Rob{who}{key}Rmsh"] = fm(v["rms_yaw_horizon"][0]); mac[f"Rob{who}{key}Fail"] = fm(100 * v["failure"][0], "{:.0f}")
     try:   # original curriculum selected checkpoints on randomized episodes 0-24 -> check on episodes 25-49 only
