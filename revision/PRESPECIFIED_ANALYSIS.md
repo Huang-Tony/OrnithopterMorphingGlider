@@ -73,3 +73,12 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   Development tests (revision/task_curriculum_tests.py, 500k steps, seeds 17/117) compare training-time curves
   with flat SAC; they use the training-time evaluation episodes for development only, and any final comparison
   uses the full pre-specified evaluation protocol.
+
+
+## Note 2026-11-08 06:20 (development only)
+
+* Robustness found that flat SAC departs in every episode with the measured 2.65 Hz wing mode in the loop; a post-hoc
+  first-order command filter (cutoff selected on tuning episodes, 0.9-3.7 Hz grid) does not help (98% failures).
+  Reported in the paper as a limitation. Pilot of a remedy (revision/mode_aware_pilot.py): flat SAC seed 7 retrained
+  with a randomized wing mode in the loop; compared on validation episodes only. Not part of the pre-specified
+  comparison; any use in the paper is the user's decision.
