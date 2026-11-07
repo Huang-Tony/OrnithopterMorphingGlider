@@ -53,7 +53,8 @@ class PolicyProbe:
 
 
 def make_eval_env(seed, domain_rand_scale, *, use_residual=False, residual_limit=None, rpl=EVAL_RPL_DEG,
-                  sensor_noise_scale=1.0, phys_override=None, actuator_tau=None, physics_substeps=None):
+                  sensor_noise_scale=1.0, phys_override=None, actuator_tau=None, physics_substeps=None,
+                  act_wn=None, act_zeta=None, yaw_targets=None):
     from morphing_glider.environment.env import MorphingGliderEnv6DOF
     env = make_env(seed=seed, domain_rand_scale=float(domain_rand_scale), max_steps=MAX_STEPS_EP, for_eval=True,
                    twist_enabled=True, include_omega_cross=True, roll_pitch_limit_deg=float(rpl),
@@ -61,12 +62,17 @@ def make_eval_env(seed, domain_rand_scale, *, use_residual=False, residual_limit
     base = env.unwrapped
     if actuator_tau is not None: base.act_tau = float(actuator_tau)
     if physics_substeps is not None: base.physics_substeps = int(physics_substeps)
+    if act_wn is not None: base.act_wn = float(act_wn); base.act_zeta = float(act_zeta if act_zeta is not None else 0.1)
+    if yaw_targets is not None: base.yaw_targets = [float(v) for v in yaw_targets]
     if phys_override:   # applied after every reset (model-mismatch stress tests)
         orig_reset = base.reset
         def reset_with_override(seed=None, options=None, _o=orig_reset):
             obs, info = _o(seed=seed, options=options)
             for k, v in phys_override.items():
-                base.phys[k] = float(v(base.phys[k])) if callable(v) else float(v)
+                if v is None: base.phys.pop(k, None)
+                else: base.phys[k] = float(v(base.phys[k])) if callable(v) else float(v)
+            if base.yaw_ref not in base.yaw_targets:      # reference drawn before an override of the target set
+                base.yaw_ref = float(base.np_random.choice(base.yaw_targets)); base.yaw_ref_prev = base.yaw_ref
             return base._get_obs(), info
         base.reset = reset_with_override
     if use_residual:
@@ -83,9 +89,10 @@ def run_episode_full(env, controller, seed, max_steps=MAX_STEPS_EP):
     base = env.unwrapped
     rec = {k: [] for k in STEP_KEYS}
     rec.update(action=[], p3_R=[], p3_L=[], p3_cmd_R=[], p3_cmd_L=[], spar_R_p1=[], spar_R_p2=[], spar_L_p1=[],
-               spar_L_p2=[], gust=[], omega=[], pos=[], vel=[], policy_mu=[], policy_std=[], t_ctrl_s=[])
+               spar_L_p2=[], gust=[], omega=[], pos=[], vel=[], policy_mu=[], policy_std=[], t_ctrl_s=[], obs=[])
     hist = []
     for t in range(int(max_steps)):
+        rec["obs"].append(np.asarray(obs, dtype=float).copy())       # raw 41-D observation fed to the controller
         t0 = time.perf_counter()
         action, _ = controller.predict(obs, deterministic=True)
         rec["t_ctrl_s"].append(time.perf_counter() - t0)

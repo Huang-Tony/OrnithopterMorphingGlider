@@ -24,7 +24,8 @@ N_ENVS = 10
 MAX_STEPS_EP = 200
 EVAL_EVERY = 50_000          # training-time evaluation interval
 TRAIN_EVAL_EPS = 25          # episodes per training-time evaluation
-FINAL_EVAL_EPS = 50          # episodes per seed per condition in the final evaluation
+QUICK = os.environ.get("REV_QUICK") == "1"   # dry-run mode: tiny episode counts (pipeline test only)
+FINAL_EVAL_EPS = 2 if QUICK else 50          # episodes per seed per condition in the final evaluation
 GLOBAL_SEED = 7
 EVAL_SEED_BASE = GLOBAL_SEED + 10000
 TOTAL_STEPS = 1_000_000      # revision R1: identical budget for baseline, curriculum and residual SAC
