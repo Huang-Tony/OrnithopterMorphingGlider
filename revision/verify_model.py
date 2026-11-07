@@ -50,14 +50,43 @@ def integration_check():
     cases = {k: (lambda t, f=f: A * f(t)) for k, f in cases.items()}
     for name, fn in cases.items():
         ref = rollout(fn, 80); sub = rollout(fn, 4); one = rollout(fn, 1)
-        n = min(len(ref), len(sub), len(one))
-        amp = np.sqrt(np.mean(ref[:n, 2] ** 2))
-        res[name] = {"steps": int(n), "yaw_rate_rms_ref": float(amp),
+        n = min(len(ref), len(sub)); n1 = min(len(ref), len(one))       # each scheme over its own window
+        amp = np.sqrt(np.mean(ref[:n, 2] ** 2)); amp1 = np.sqrt(np.mean(ref[:n1, 2] ** 2))
+        res[name] = {"steps": int(n), "steps_sub1": int(n1), "yaw_rate_rms_ref": float(amp),
                      "yaw_err_pct_sub4": float(100 * np.sqrt(np.mean((sub[:n, 2] - ref[:n, 2]) ** 2)) / amp),
-                     "yaw_err_pct_sub1": float(100 * np.sqrt(np.mean((one[:n, 2] - ref[:n, 2]) ** 2)) / amp),
+                     "yaw_err_pct_sub1": float(100 * np.sqrt(np.mean((one[:n1, 2] - ref[:n1, 2]) ** 2)) / amp1),
                      "roll_err_deg_sub4": float(np.degrees(np.max(np.abs(sub[:n, 0] - ref[:n, 0])))),
-                     "roll_err_deg_sub1": float(np.degrees(np.max(np.abs(one[:n, 0] - ref[:n, 0]))))}
+                     "roll_err_deg_sub1": float(np.degrees(np.max(np.abs(one[:n1, 0] - ref[:n1, 0]))))}
         print(name, {k: round(v, 3) for k, v in res[name].items()})
+    return res
+
+
+def closed_loop_check(T=200):
+    """Closed-loop verification over a full 8 s episode with yaw-reference steps: the heuristic controller flies
+    the nominal vehicle (no gusts or noise); identical controller and reference, different integration steps."""
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from classical import make_classical
+
+    def run(n_sub):
+        env = MorphingGliderEnv6DOF(max_steps=T, num_aero_panels=10, domain_rand_scale=0.0, seed=5,
+                                    roll_pitch_limit_deg=89.0, sensor_noise_scale=0.0, physics_substeps=n_sub)
+        obs, _ = env.reset(seed=5); env.phys.update(gust_sigma_x=0.0, gust_sigma_y=0.0, gust_sigma_z=0.0)
+        for s_ in (env.spar_R, env.spar_L): s_.iterations = 12
+        c = make_classical("Heuristic"); out = []
+        for t in range(T):
+            a, _ = c.predict(obs)
+            obs, _, term, trunc, info = env.step(np.asarray(a, dtype=np.float32))
+            out.append([info["roll"], info["pitch"], info["yaw_rate"]])
+            if term or trunc: break
+        return np.array(out)
+    ref, sub = run(80), run(4); n = min(len(ref), len(sub))
+    amp = np.sqrt(np.mean(ref[:n, 2] ** 2))
+    res = {"steps": int(n), "yaw_rate_rms_ref": float(amp),
+           "yaw_err_pct_sub4": float(100 * np.sqrt(np.mean((sub[:n, 2] - ref[:n, 2]) ** 2)) / amp),
+           "roll_err_deg_sub4": float(np.degrees(np.max(np.abs(sub[:n, 0] - ref[:n, 0])))),
+           "pitch_err_deg_sub4": float(np.degrees(np.max(np.abs(sub[:n, 1] - ref[:n, 1]))))}
+    print("closed loop", {k: round(v, 3) for k, v in res.items()})
     return res
 
 
@@ -102,8 +131,7 @@ def authority_figure(yaw_damping):
     ax.plot(ds, mz, color=figstyle.SLOT["blue"], lw=1.0)
     ax.axhline(mz.max(), color=figstyle.MUTED, lw=0.6, ls="--")
     ax.set_xlabel(r"differential sweep amplitude $\delta$ (m)"); ax.set_ylabel(r"$\Delta M_z$ (N m)")
-    sec = ax.secondary_yaxis("right", functions=(lambda m: m / yaw_damping, lambda r: r * yaw_damping))
-    sec.set_ylabel(r"steady yaw rate $\Delta M_z/D_r$ (rad/s)"); sec.tick_params(width=0.5, length=2.5)
+    # airframe v3: no steady-yaw-rate axis (with weak yaw damping the response is governed by sideslip and bank)
     ax.text(0.02, mz.max() * 1.03, f"saturation {mz.max():.3f} N m", fontsize=5.6, color=figstyle.INK2, va="bottom")
     ax.set_ylim(0, mz.max() * 1.18); figstyle.panel_label(ax, "b", x=-0.22)
     fig.tight_layout(w_pad=2.5); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_authority"))
@@ -113,7 +141,7 @@ def authority_figure(yaw_damping):
 def main():
     import json
     pi = json.load(open(os.path.join(RUNS_DIR, "analysis", "plant_identification.json")))
-    out = {"integration": integration_check(), "spar_energy": spar_energy_check(),
+    out = {"integration": integration_check(), "closed_loop": closed_loop_check(), "spar_energy": spar_energy_check(),
            "authority": authority_figure(pi["yaw_model"]["total_yaw_damping"])}
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "model_verification.json"))
     print("spar energy:", out["spar_energy"], "authority:", out["authority"])

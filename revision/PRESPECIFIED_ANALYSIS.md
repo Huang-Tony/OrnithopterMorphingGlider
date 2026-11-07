@@ -10,3 +10,17 @@ magnitude (envelope); model-mismatch robustness; curriculum/residual vs baseline
 Contingency, only if the primary test is not significant at alpha = 0.05: (1) equal-budget SAC tuning (9 configurations,
 selected on held-out episodes, never the test set), (2) checkpoint selection on validation episodes, (3) additional seeds.
 Not permitted: dropping seeds/episodes, changing the test set, metric or failure rule, weakening baselines.
+
+
+## Amendment 2026-11-07 (airframe v3), fixed before any v3 comparison between SAC and the classical controllers
+
+* Classical tuning is two-stage (revision/refine_classical.py): the 9-configuration grid, then 30 Nelder-Mead
+  evaluations in log-parameter space started from the best grid point (initial simplex = factor 2 per parameter,
+  physical bounds), on the same held-out tuning episodes (seeds 50000+). Every parametric controller receives
+  39 evaluations. The selected configuration is evaluated once on the evaluation episodes.
+* Reported per controller: stage-1 objective, stage-2 objective, refinement gain, and whether the stage-1 optimum
+  lay on the grid edge.
+* Alloc-ML was redesigned for airframe v3 (coordinated-turn bank reference, attitude-priority allocation,
+  anti-windup, tuned bank limit) after its v2 structure departed on the v3 airframe; all design iterations used the
+  tuning seeds only. The redesign is disclosed in the response to the reviewers.
+* Small-test auto-continue rule: see revision/smalltest.py (added 21:37).

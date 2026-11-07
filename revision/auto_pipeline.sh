@@ -2,7 +2,7 @@
 # Local auto-pipeline (no Claude involvement): small-test decision -> (GO only) remaining training -> evaluation/analysis.
 cd "$(dirname "$0")/.." || exit 1
 LOG=revision_runs/auto_pipeline.log; echo "[auto] start $(date)" >> $LOG
-while [ ! -f revision_runs/models/baseline_seed7.zip ] || [ ! -f revision_runs/models/baseline_seed107.zip ] || pgrep -f revision/tune_classical.py >/dev/null; do sleep 60; done
+while [ ! -f revision_runs/models/baseline_seed7.zip ] || [ ! -f revision_runs/models/baseline_seed107.zip ] || [ ! -f revision_runs/analysis/TUNING_DONE ]; do sleep 60; done
 echo "[auto] small test + tuning finished $(date)" >> $LOG
 .venv/bin/python -u revision/smalltest.py >> $LOG 2>&1
 DEC=$(python3 -c "import json;d=json.load(open('revision_runs/analysis/smalltest_decision.json'));print(d['overall'], 'AUTO' if d.get('auto_continue') else 'HOLD')" 2>/dev/null)

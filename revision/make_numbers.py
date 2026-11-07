@@ -38,8 +38,26 @@ def main():
     # ---- platform ----
     put("PlanSpan", 2 * C.L_FIXED, "{:.1f}"); put("PlanSemiSpan", C.L_FIXED, "{:.1f}"); put("PlanChord", C.WING_CHORD, "{:.2f}")
     put("PlanArea", C.WING_AREA_TOTAL, "{:.2f}"); put("PlanAR", C.ASPECT_RATIO, "{:.1f}"); put("PlanMass", P["mass"], "{:.1f}")
-    put("PlanVzero", P["V0"], "{:.0f}"); put("PlanIxx", P["Ixx"], "{:.2f}"); put("PlanIyy", P["Iyy"], "{:.2f}"); put("PlanIzz", P["Izz"], "{:.2f}")
-    put("PlanDroll", P["d_roll"], "{:.1f}"); put("PlanDpitch", P["d_pitch"], "{:.1f}"); put("PlanDyaw", P["d_yaw"], "{:.2f}")
+    put("PlanVzero", P["V0"], "{:.0f}"); put("PlanIxx", P["Ixx"], "{:.3f}"); put("PlanIyy", P["Iyy"], "{:.4f}"); put("PlanIzz", P["Izz"], "{:.3f}")
+    put("PlanDroll", P["d_roll"], "{:.0f}"); put("PlanDpitch", P["d_pitch"], "{:.3f}"); put("PlanDyaw", P["d_yaw"], "{:.0f}")
+    put("PlanXcgMm", 1000 * P["x_cg"], "{:.1f}"); put("PlanCmZero", P["cm0"], "{:.4f}")
+    # ---- airframe v3 derivation (derive_airframe.py) ----
+    af = J("airframe_v3.json")
+    if af:
+        t = af["trim"]; mb = af["mass_budget"]
+        put("AfSM", 100 * t["static_margin"], "{:.0f}"); put("AfXnpMm", abs(1000 * t["x_np_m"]), "{:.1f}")   # neutral point lies behind the spar root (x_np < 0)
+        put("AfMalpha", t["dMy_dalpha_v3"], "{:.2f}"); put("AfLalpha", t["L_alpha_N_per_rad"], "{:.0f}")
+        put("AfMassWing", mb[0]["mass_kg"], "{:.2f}"); put("AfMassShell", mb[1]["mass_kg"], "{:.2f}"); put("AfMassBay", mb[2]["mass_kg"], "{:.2f}")
+        put("AfDqSection", af["damping"]["d_pitch_section_thin_airfoil"], "{:.3f}")
+        sp = af["short_period_estimate"]
+        put("AfOmegaSP", sp["omega_rad_s"], "{:.0f}"); put("AfTauRoll", 1000 * sp["roll_time_const_s"], "{:.0f}")
+    V2 = {"Ixx": 0.25, "Iyy": 0.25, "Izz": 0.12, "d_roll": 2.8, "d_pitch": 2.8, "d_yaw": 0.25}
+    put("VtwoIxx", V2["Ixx"], "{:.2f}"); put("VtwoIyy", V2["Iyy"], "{:.2f}"); put("VtwoIzz", V2["Izz"], "{:.2f}")
+    put("VtwoDroll", V2["d_roll"], "{:.1f}"); put("VtwoDpitch", V2["d_pitch"], "{:.1f}"); put("VtwoDyaw", V2["d_yaw"], "{:.2f}")
+    for r_, tag in ((0.3, "A"), (0.6, "B")):     # coordinated turn at V0: tan(phi) = r V / g, radius V / r
+        put(f"TurnBank{tag}", math.degrees(math.atan(r_ * P["V0"] / P["g"])), "{:.0f}")
+        put(f"TurnRadius{tag}", P["V0"] / r_, "{:.0f}")
+        put(f"TurnLoad{tag}", 1 / math.cos(math.atan(r_ * P["V0"] / P["g"])), "{:.2f}")
     put("PlanRe", P["rho"] * P["V0"] * C.WING_CHORD / 1.81e-5 / 1e5, "{:.1f}")
     put("PlanWingLoading", P["mass"] * P["g"] / C.WING_AREA_TOTAL, "{:.1f}")
     put("DT", C.DT * 1000, "{:.0f}"); put("Substeps", C.PHYSICS_SUBSTEPS, "{:d}"); put("SubDT", C.DT * 1000 / C.PHYSICS_SUBSTEPS, "{:.0f}")
@@ -115,7 +133,12 @@ def main():
         put("IntegErrYawPctCoarse", max(c["yaw_err_pct_sub1"] for c in mv["integration"].values()), "{:.1f}")
         put("IntegErrRollDeg", max(c["roll_err_deg_sub4"] for c in mv["integration"].values()), "{:.2f}")
         put("SparEBcorr", mv["spar_energy"].get("correlation"), "{:.4f}")
+        cl = mv.get("closed_loop")
+        if cl:
+            put("IntegClosedYawPct", cl["yaw_err_pct_sub4"], "{:.1f}"); put("IntegClosedRollDeg", cl["roll_err_deg_sub4"], "{:.2f}")
+            put("IntegClosedPitchDeg", cl["pitch_err_deg_sub4"], "{:.2f}"); put("IntegClosedS", cl["steps"] * C.DT, "{:.0f}")
     logs = sorted(glob.glob(os.path.join(RUNS_DIR, "logs", "*.train.json")))
+    put("ActorParams", None); put("ActorParamsMean", None)
     if logs:
         lg = json.load(open(logs[0]))
         put("ActorParams", f"{lg['actor_params']:,}".replace(",", "{,}"))
