@@ -355,6 +355,18 @@ def main():
         if c.startswith("env_"): continue
         key = "".join(w.capitalize() for w in c.replace("x", "X").split("_")); who = "Sac" if n == "SAC" else tag.get(n, n)
         mac[f"Rob{who}{key}Rmsh"] = fm(v["rms_yaw_horizon"][0]); mac[f"Rob{who}{key}Fail"] = fm(100 * v["failure"][0], "{:.0f}")
+    try:   # original curriculum selected checkpoints on randomized episodes 0-24 -> check on episodes 25-49 only
+        from common import EVAL_SEED_BASE
+        for algo, t in (("baseline", "Base"), ("curriculum", "Curr"), ("residual_curriculum", "Resid")):
+            seeds = data.get((algo, "randomized"))
+            if not seeds: continue
+            per = [np.array([e["rms_yaw_horizon"] for e in v if e["seed"] - EVAL_SEED_BASE >= 25]) for v in seeds.values()]
+            fl = [np.array([e["failure"] for e in v if e["seed"] - EVAL_SEED_BASE >= 25]) for v in seeds.values()]
+            m, lo, hi = hier_ci(per); mac[f"R{t}RandRmshHeld"] = fm(m); mac[f"R{t}RandRmshHeldLo"] = fm(lo); mac[f"R{t}RandRmshHeldHi"] = fm(hi)
+            mac[f"R{t}RandFailHeld"] = fm(100 * float(np.mean(np.concatenate(fl))), "{:.0f}")
+            out.setdefault("heldout_25_49", {})[algo] = {"rms_h": [m, lo, hi], "failure": float(np.mean(np.concatenate(fl)))}
+    except Exception as e:
+        print("held-out check skipped:", repr(e))
     out["macros"] = mac; dump_json(out, os.path.join(RUNS_DIR, "analysis", "results_summary.json"))
     for key in sorted(S):
         r = S[key]; print(f"{key:<30} RMS@H {r['rms_yaw_horizon'][0]:.3f} [{r['rms_yaw_horizon'][1]:.3f},{r['rms_yaw_horizon'][2]:.3f}] "
