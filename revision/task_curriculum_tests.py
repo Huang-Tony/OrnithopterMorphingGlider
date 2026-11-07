@@ -7,7 +7,7 @@ evaluation curves with those of the five flat-SAC 1M runs on the same evaluation
 SAC run does not depend on its total budget (constant learning rate), so the 1M runs are an exact reference.
 
     python revision/task_curriculum_tests.py run  [--jobs task_curriculum:17:500000 ...]
-    python revision/task_curriculum_tests.py compare
+    python revision/task_curriculum_tests.py compare | validate
 """
 
 import argparse
@@ -21,7 +21,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 REPO = os.path.dirname(HERE); MAIN = os.path.join(REPO, "revision_runs"); EXT = os.path.join(MAIN, "tc_tests")
 PY = os.path.join(REPO, ".venv", "bin", "python")
-DEFAULT_JOBS = ["task_curriculum:17:500000", "task_curriculum:117:500000"]
+DEFAULT_JOBS = ["task_curriculum:17:1000000", "task_curriculum:117:1000000"]
+VAL_SEED_BASE = 60_000      # validation episodes: disjoint from tuning (50000+) and evaluation seeds
+VAL_EPS = 50
 
 
 def log(msg):
@@ -58,7 +60,7 @@ def run(jobs):
                 env=env, cwd=REPO)
             log(f"started {(algo, seed, steps)}")
         time.sleep(60)
-    log("ALL DONE"); compare()
+    log("training done"); compare(); validate(); log("ALL DONE")
 
 
 def curve(path):
@@ -91,8 +93,31 @@ def compare():
         json.dump(out, f, indent=1)
 
 
+def validate():
+    """Decision metric: final models on held-out validation episodes (never the evaluation set)."""
+    import numpy as np
+    from evaluate import evaluate, load_sac
+    models = {f"flat_{os.path.basename(f)[:-4]}": f for f in sorted(glob.glob(os.path.join(MAIN, "models", "baseline_seed*.zip")))}
+    models.update({f"oldcur_{os.path.basename(f)[:-4]}": f for f in sorted(glob.glob(os.path.join(MAIN, "models", "curriculum_seed*.zip")))})
+    models.update({f"tc_{os.path.basename(f)[:-4]}": f for f in sorted(glob.glob(os.path.join(EXT, "models", "task_curriculum_seed*.zip")))})
+    out_p = os.path.join(MAIN, "analysis", "task_curriculum_validation.json")
+    res = json.load(open(out_p)) if os.path.exists(out_p) else {}
+    for tag, path in models.items():
+        for cond, rs in (("nominal", 0.0), ("randomized", 1.0)):
+            if f"{tag}|{cond}" in res: continue
+            E = evaluate(load_sac(path), label=tag, condition=cond, rand_scale=rs, n_episodes=VAL_EPS,
+                         seed_base=VAL_SEED_BASE, verbose=True)["episodes"]
+            res[f"{tag}|{cond}"] = {"rms_h": [e["rms_yaw_horizon"] for e in E], "fail": [e["failure"] for e in E]}
+            json.dump(res, open(out_p, "w"))
+    for grp in ("flat", "oldcur", "tc"):
+        for cond in ("nominal", "randomized"):
+            v = [np.mean(r["rms_h"]) for k, r in res.items() if k.startswith(grp + "_") and k.endswith(cond)]
+            f = [np.mean(r["fail"]) for k, r in res.items() if k.startswith(grp + "_") and k.endswith(cond)]
+            if v: print(f"VALIDATION {grp:7s} {cond:10s} RMS@H per seed {np.round(v, 3)} mean {np.mean(v):.3f} | fail {100*np.mean(f):.1f}%")
+
+
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["run", "compare"])
+    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["run", "compare", "validate"])
     ap.add_argument("--jobs", nargs="+", default=DEFAULT_JOBS)
     a = ap.parse_args()
-    run(a.jobs) if a.cmd == "run" else compare()
+    {"run": lambda: run(a.jobs), "compare": compare, "validate": validate}[a.cmd]()
