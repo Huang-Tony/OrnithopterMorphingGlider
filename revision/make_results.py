@@ -343,6 +343,7 @@ def main():
         c = "Nom" if cond == "nominal" else "Rand"; t = tests[f"baseline_vs_best_classical|{cond}"]
         mac[f"RBestClassical{c}"] = str(t.get("best"))
         mac[f"RRatioBest{c}"] = fm(t.get("ratio", np.nan), "{:.2f}"); mac[f"RPBest{c}"] = fm(t.get("p_wilcoxon", np.nan), "{:.1e}")
+        mac[f"RRedBest{c}"] = fm(100 * (1 - t.get("ratio", np.nan)), "{:.0f}"); mac[f"RFactorBest{c}"] = fm(1 / t.get("ratio", np.nan), "{:.1f}")
         for other, o in (("curriculum", "Curr"), ("residual_curriculum", "Resid")):
             t2 = tests.get(f"baseline_vs_{other}|{cond}") or {}
             mac[f"RPBaseVs{o}{c}"] = fm(t2.get("p_mannwhitney", np.nan), "{:.2f}"); mac[f"RDBaseVs{o}{c}"] = fm(t2.get("cohen_d", np.nan), "{:.2f}")

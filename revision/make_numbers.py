@@ -149,7 +149,7 @@ def main():
     lateral_macros()
     sa = J("strategy.json")
     if sa:
-        for name, tag in (("SAC", "Sac"), ("Heuristic", "Heur"), ("LQR", "Lqr"), ("MPC", "Mpc"), ("PID", "Pid")):
+        for name, tag in (("SAC", "Sac"), ("Curriculum", "Curr"), ("Residual", "Resid"), ("Heuristic", "Heur"), ("LQR", "Lqr"), ("MPC", "Mpc"), ("PID", "Pid")):
             st = sa["controllers"].get(name)
             if not st or not st.get("n_segments"): continue
             put(f"Strat{tag}R", st["r"], "{:.2f}"); put(f"Strat{tag}RPct", 100 * st["r"] / 0.6, "{:.0f}")
