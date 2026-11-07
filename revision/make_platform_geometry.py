@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Solve the spar shapes (simulator's energy solver) and aerodynamic moments of the wing configurations
+"""(Airframe v3: moments about the center of mass, x_cg ahead of the spar root, with section Cm0.)
+Solve the spar shapes (simulator's energy solver) and aerodynamic moments of the wing configurations
 shown in the platform figure; writes revision_runs/analysis/platform_configs.json for the 3D renderer."""
 
 import os
@@ -17,7 +18,9 @@ CONFIGS = {   # tip offsets [dx_R, dy_R, dz_R, dx_L, dy_L, dz_L]  (R = +y wing)
     "neutral":        [0, 0, 0, 0, 0, 0],
     "diff_sweep":     [0.30, 0, 0, -0.30, 0, 0],      # yaw effector
     "diff_dihedral":  [0, 0, 0.12, 0, 0, -0.12],     # roll effector
-    "hero":           [0.12, 0, 0.06, -0.20, 0, -0.03],
+    "diff_span":      [0, 0.15, 0, 0, 0.15, 0],      # roll effector (R extended, L retracted)
+    "sym_sweep":      [-0.30, 0, 0, -0.30, 0, 0],    # pitch effector (both tips aft)
+    "hero":           [0.10, 0, 0.05, -0.16, 0, -0.03],
 }
 
 
