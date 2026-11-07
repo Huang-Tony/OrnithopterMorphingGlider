@@ -2,11 +2,16 @@ import numpy as np
 
 from morphing_glider.config import WIND_X_ABS_MAX_MPS
 
+# Revision R1 (aero model v2): sectional lift/drag calibrated to NASA LTPT wind-tunnel data for the Eppler 387
+# at Re = 1e5-2e5 (NASA TM-4062), see revision/calibrate_aero_e387.py and revision/data/aero_calibration_e387.json.
+# v1 values (submitted manuscript): cd0=0.03, k_induced=0.06, cl_alpha=5.0, cl_max=1.4, alpha0=0.028,
+# alpha_stall=0.25, lift_scale=0.85, tanh saturation, no post-stall lift loss.
 NOMINAL_PHYS = {
     "g": 9.81, "rho": 1.225, "V0": 15.0, "mass": 0.5,
-    "cd0": 0.03, "k_induced": 0.06, "cl_alpha": 5.0, "cl_max": 1.4,
-    "alpha0": 0.028, "alpha_clip": 0.40, "alpha_stall": 0.25, "cd_stall": 0.45,
-    "lift_scale": 0.85,
+    "cd0": 0.0196, "k_induced": 0.0304, "cl_alpha": 5.057, "cl_max": 1.219,
+    "cl_sat_n": 26.61, "post_stall_cl_factor": 0.707,
+    "alpha0": 0.0235, "alpha_clip": 0.40, "alpha_stall": 0.318, "cd_stall": 0.45,
+    "lift_scale": 1.0,
     "Ixx": 0.25, "Iyy": 0.25, "Izz": 0.120,
     "d_roll": 2.8, "d_pitch": 2.8, "d_yaw": 0.25,
     "wind_x": 0.0, "wind_y": 0.0, "wind_z": 0.0,

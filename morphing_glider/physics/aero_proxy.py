@@ -30,7 +30,16 @@ class AeroProxy3D:
         alpha = alpha + float(phys.get("alpha0", 0.0))
         alpha_clip = float(phys["alpha_clip"]); alpha = np.clip(alpha, -alpha_clip, +alpha_clip)
         cl_alpha = float(phys["cl_alpha"]); cl_max = float(phys["cl_max"])
-        CL = cl_max * np.tanh(cl_alpha*alpha/max(1e-6, cl_max))
+        n_sat = phys.get("cl_sat_n")
+        if n_sat is None:      # v1 lift law (soft tanh saturation)
+            CL = cl_max * np.tanh(cl_alpha*alpha/max(1e-6, cl_max))
+        else:                  # revision R1 (v2): sharp saturation + post-stall drop, calibrated to E387 data
+            x = cl_alpha * alpha; n_sat = float(n_sat)
+            CL = x / (1.0 + np.abs(x / max(1e-6, cl_max)) ** n_sat) ** (1.0 / n_sat)
+            f_post = float(phys.get("post_stall_cl_factor", 1.0))
+            if f_post < 1.0:
+                z = np.clip((np.abs(alpha) - float(phys["alpha_stall"])) / 0.03, 0.0, 1.0)
+                CL = CL * (1.0 - (1.0 - f_post) * z * z * (3.0 - 2.0 * z))
         cd0 = float(phys["cd0"]); k_ind = float(phys["k_induced"])
         stall = np.maximum(0.0, np.abs(alpha)-float(phys["alpha_stall"])) / max(1e-6, alpha_clip)
         CD = cd0 + k_ind*(CL**2) + float(phys["cd_stall"])*(stall**2)
