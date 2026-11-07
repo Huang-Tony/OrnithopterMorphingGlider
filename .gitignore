@@ -37,3 +37,6 @@ Thumbs.db
 # Tools
 .claude/
 .pytest_cache/
+
+# revision R1 run outputs
+revision_runs/

@@ -32,6 +32,17 @@ class RealTimeBezierSpar:
         return self._get_len_energy(self.p1, self.p2)
 
     def solve_shape(self, *, iterations=None, w_len=55.0, w_energy=1.0, w_bio=2.0, eps=1e-3, grad_clip=0.6):
+        # Revision R1: the forward-difference gradient below is not mirror-symmetric in y, so a y<0 spar
+        # converged to a slightly different shape than its y>0 mirror image. Solving the y<0 spar in
+        # mirrored coordinates makes both wings solve the identical problem (exact left/right symmetry).
+        if float(self.p3[1]) < 0.0:
+            M = np.array([1.0, -1.0, 1.0])
+            self.p0 = self.p0 * M; self.p1 = self.p1 * M; self.p2 = self.p2 * M; self.p3 = self.p3 * M
+            try:
+                return self.solve_shape(iterations=iterations, w_len=w_len, w_energy=w_energy, w_bio=w_bio,
+                                        eps=eps, grad_clip=grad_clip)
+            finally:
+                self.p0 = self.p0 * M; self.p1 = self.p1 * M; self.p2 = self.p2 * M; self.p3 = self.p3 * M
         target_len = float(L_FIXED); iters = self.iterations if iterations is None else int(iterations)
         if self.lock_z:
             self.p1[2]=0.0; self.p2[2]=0.0; self.p3[2]=0.0; w_bio=0.0

@@ -10,7 +10,7 @@ from gymnasium import spaces
 from morphing_glider.config import (
     DT, L_FIXED, DX_RANGE, DY_RANGE, DZ_RANGE,
     DEFAULT_YAW_TARGETS, HOLD_RANGE_STEPS,
-    FAST_DEV_RUN,
+    FAST_DEV_RUN, PHYSICS_SUBSTEPS,
 )
 from morphing_glider.environment.observation import OBS_IDX, OBS_DIM
 from morphing_glider.environment.reward import RewardComputer
@@ -38,9 +38,11 @@ class MorphingGliderEnv6DOF(gym.Env):
                  coupling_scale=1.0, stability_weight=0.03,
                  sensor_noise_scale: float = 1.0,
                  reward_computer: Optional[RewardComputer] = None,
+                 physics_substeps: int = PHYSICS_SUBSTEPS,
                  seed=None):
         super().__init__()
         self.dt = float(DT); self.max_steps = int(max_steps)
+        self.physics_substeps = int(max(1, physics_substeps))
         self.twist_enabled = bool(twist_enabled); self.include_omega_cross = bool(include_omega_cross)
         self.yaw_targets = list(map(float, yaw_targets))
         self.hold_min = int(hold_range_steps[0]); self.hold_max = int(hold_range_steps[1])
@@ -238,27 +240,41 @@ class MorphingGliderEnv6DOF(gym.Env):
         self.spar_R.p3 = self.p3_R.copy(); self.spar_L.p3 = self.p3_L.copy()
         self._apply_twist_lock(); self.spar_R.solve_shape(); self.spar_L.solve_shape(); self._apply_twist_lock()
         self._update_gust()
-        R_bw = quat_to_rotmat_body_to_world(self.q)
-        v_rel_world = self.vel_world - self._wind_world(); v_rel_body = R_bw.T @ v_rel_world
-        F_R, M_R, d_R = self.aero.calculate_forces(self.spar_R, v_rel_body=v_rel_body, omega_body=self.omega, phys=self.phys)
-        F_L, M_L, d_L = self.aero.calculate_forces(self.spar_L, v_rel_body=v_rel_body, omega_body=self.omega, phys=self.phys)
-        F_body = F_R + F_L; M_body = M_R + M_L
+        # Rigid-body integration with physics substeps (revision R1). Wing shape, actuator state and gust
+        # are held over the 40 ms control interval; aerodynamic loads are re-evaluated every substep.
+        n_sub = int(self.physics_substeps); h = self.dt / n_sub
+        wind_world = self._wind_world()
         cs = float(self.coupling_scale)
-        M_used = np.array([M_body[0] * cs, M_body[1] * cs, M_body[2]], dtype=float)
         I = np.array([float(self.phys["Ixx"]), float(self.phys["Iyy"]), float(self.phys["Izz"])])
         D = np.array([float(self.phys["d_roll"]), float(self.phys["d_pitch"]), float(self.phys["d_yaw"])])
-        omega_dot = (M_used - np.cross(self.omega, I * self.omega) - D * self.omega) / (I + 1e-9)
-        self.omega = np.clip(self.omega + omega_dot * self.dt, -8.0, +8.0)
-        self.q = quat_integrate_body_rates(self.q, self.omega, self.dt)
         m = float(self.phys.get("mass", 0.5)); g = float(self.phys.get("g", 9.81))
-        F_world = R_bw @ F_body; gravity = np.array([0.0, 0.0, -m * g])
-        self.vel_world += (F_world + gravity) / max(1e-9, m) * self.dt
-        self.vel_world = np.clip(self.vel_world, -100.0, 100.0)
-        self.pos_world += self.vel_world * self.dt
+        gravity = np.array([0.0, 0.0, -m * g])
+        F_sum = np.zeros(3); M_sum = np.zeros(3); power_sum = 0.0
+        dR_sum = {"total_drag_force": 0.0, "power_loss": 0.0}; dL_sum = {"total_drag_force": 0.0, "power_loss": 0.0}
+        for _ in range(n_sub):
+            R_bw = quat_to_rotmat_body_to_world(self.q)
+            v_rel_body = R_bw.T @ (self.vel_world - wind_world)
+            F_R, M_R, d_R = self.aero.calculate_forces(self.spar_R, v_rel_body=v_rel_body, omega_body=self.omega, phys=self.phys)
+            F_L, M_L, d_L = self.aero.calculate_forces(self.spar_L, v_rel_body=v_rel_body, omega_body=self.omega, phys=self.phys)
+            F_body = F_R + F_L; M_body = M_R + M_L
+            M_used = np.array([M_body[0] * cs, M_body[1] * cs, M_body[2]], dtype=float)
+            omega_dot = (M_used - np.cross(self.omega, I * self.omega) - D * self.omega) / (I + 1e-9)
+            self.omega = np.clip(self.omega + omega_dot * h, -8.0, +8.0)
+            self.q = quat_integrate_body_rates(self.q, self.omega, h)
+            self.vel_world += (R_bw @ F_body + gravity) / max(1e-9, m) * h
+            self.vel_world = np.clip(self.vel_world, -100.0, 100.0)
+            self.pos_world += self.vel_world * h
+            F_sum += F_body; M_sum += M_used
+            power_sum += float(max(0.0, -float(np.dot(F_body, v_rel_body))))
+            for acc, d in ((dR_sum, d_R), (dL_sum, d_L)):
+                acc["total_drag_force"] += float(d["total_drag_force"]); acc["power_loss"] += float(d["power_loss"])
+        F_body = F_sum / n_sub; M_used = M_sum / n_sub          # interval-averaged loads (diagnostics)
+        d_R = {k: v / n_sub for k, v in dR_sum.items()}; d_L = {k: v / n_sub for k, v in dL_sum.items()}
+        v_rel_world = self.vel_world - wind_world
         roll, pitch, yaw = quat_to_euler_xyz(self.q)
         yaw_rate = float(self.omega[2]); speed = float(np.linalg.norm(v_rel_world))
         altitude = float(self.pos_world[2]); vz_world = float(self.vel_world[2])
-        power_loss = float(max(0.0, -float(np.dot(F_body, v_rel_body))))
+        power_loss = float(power_sum / n_sub)
         yaw_error = yaw_rate - float(self.yaw_ref)
         zR = float(self.p3_R[2]); zL = float(self.p3_L[2])
         z_asym = 0.5 * (zR - zL); z_sym = 0.5 * (zR + zL)

@@ -16,6 +16,12 @@ class AeroProxy3D:
         dot = span[:,[0]]; c_tip = self.x_axis - dot*span
         c = (1.0-self.u)*self.x_axis + self.u*c_tip; c = c/(np.linalg.norm(c, axis=1, keepdims=True)+1e-9)
         n = np.cross(c, span); n = n/(np.linalg.norm(n, axis=1, keepdims=True)+1e-9)
+        # Revision R1 fix: orient the panel normal toward body +z on BOTH wings. For the y<0 spar the span
+        # vector points toward -y, so c x span points down; the geometric AoA and lift direction flip
+        # consistently, but the camber offset alpha0 was then added with the opposite sign on that wing,
+        # producing zero net lift at alpha=0 and a spurious +2.3 N*m rolling moment (v1 bug).
+        if float(spar.p3[1]) < 0.0:
+            n = -n
         omega = np.asarray(omega_body, dtype=float).reshape(3); v_rel = np.asarray(v_rel_body, dtype=float).reshape(3)
         if self.include_omega_cross: v_local = v_rel[None,:] + np.cross(omega[None,:], pos)
         else: v_local = np.broadcast_to(v_rel[None,:], pos.shape).copy()

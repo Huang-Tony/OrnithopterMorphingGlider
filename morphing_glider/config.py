@@ -22,7 +22,8 @@ EVAL_EPISODES_PER_SEED = 50 if PAPER_RUN else (20 if MEDIUM_RUN else 5)
 TOTAL_TRAIN_STEPS = 1_000_000 if PAPER_RUN else (500_000 if MEDIUM_RUN else 20_000)
 
 GLOBAL_SEED = 7
-DEVICE = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = os.environ.get("MORPHING_DEVICE") or (
+    "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 USE_VECNORMALIZE = True
 USE_SDE = False
 
@@ -81,7 +82,8 @@ SETTLING_BAND_GAIN = 0.30
 # ================================================================
 L_FIXED = 1.0          # [m] semi-span
 WING_CHORD = 0.15      # [m]
-DT = 0.04              # [s] timestep
+DT = 0.04              # [s] control/RL timestep (25 Hz)
+PHYSICS_SUBSTEPS = 4   # rigid-body + aero integration substeps per control step (10 ms); revision R1
 
 DX_RANGE = (-0.50, 0.50)
 DY_RANGE = (-0.20, 0.20)
@@ -150,6 +152,7 @@ HYPERPARAMETER_REGISTRY: Dict[str, Any] = {
     "GLOBAL_SEED": GLOBAL_SEED,
     "DEVICE": str(DEVICE),
     "DT": DT,
+    "PHYSICS_SUBSTEPS": PHYSICS_SUBSTEPS,
     "L_FIXED": L_FIXED,
     "WING_CHORD": WING_CHORD,
     "DX_RANGE": DX_RANGE,
