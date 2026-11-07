@@ -184,20 +184,20 @@ def fig_timehistory(data, cond="nominal"):
     t = np.arange(A["yaw_rate"].shape[1]) * DT
     fig, axs = plt.subplots(3, 1, figsize=(figstyle.SINGLE * 1.25, 3.6), sharex=True)
     ax = axs[0]; ax.step(t, A["yaw_ref"][j], where="post", color=figstyle.INK, lw=0.8, ls="--", label="reference")
-    ax.plot(t, A["yaw_rate"][j], color=figstyle.SLOT["blue"], lw=1.0, label="baseline SAC")
+    ax.plot(t, A["yaw_rate"][j], color=figstyle.SLOT["blue"], lw=1.0, label=label("baseline"))
     ax.plot(t, B["yaw_rate"][j], color=figstyle.CLASSICAL_GREYS[1], lw=1.0, label=label(best))
-    ax.set_ylabel("yaw rate (rad/s)"); ax.legend(loc="upper right", ncol=3, fontsize=5.6); figstyle.panel_label(ax, "a", x=-0.14)
+    ax.set_ylabel("yaw rate (rad/s)"); ax.legend(loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=3, fontsize=5.6, frameon=False, borderaxespad=0.1); figstyle.panel_label(ax, "a", x=-0.14)
     ax = axs[1]
     ax.plot(t, np.degrees(A["roll"][j]), color=figstyle.SLOT["blue"], lw=1.0, label="roll"); ax.plot(t, np.degrees(A["pitch"][j]), color=figstyle.SLOT["blue"], lw=0.8, ls=":", label="pitch")
     ax.plot(t, np.degrees(B["roll"][j]), color=figstyle.CLASSICAL_GREYS[1], lw=1.0); ax.plot(t, np.degrees(B["pitch"][j]), color=figstyle.CLASSICAL_GREYS[1], lw=0.8, ls=":")
-    ax.set_ylabel("attitude (deg)"); ax.legend(loc="upper right", ncol=2, fontsize=5.6); figstyle.panel_label(ax, "b", x=-0.14)
+    ax.set_ylabel("attitude (deg)"); ax.legend(loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=2, fontsize=5.6, frameon=False, borderaxespad=0.1); figstyle.panel_label(ax, "b", x=-0.14)
     ax = axs[2]
     from interpretability import virtual
     V = virtual(A["action"][j])
-    for c, nm, col in ((0, "diff. sweep", figstyle.SLOT["blue"]), (2, "diff. dihedral", figstyle.SLOT["orange"]), (4, "diff. span", figstyle.SLOT["aqua"]), (1, "sym. sweep", figstyle.SLOT["violet"])):
+    for c, nm, col in ((0, "diff. sweep", figstyle.SLOT["blue"]), (2, "diff. dihedral", figstyle.SLOT["orange"]), (4, "diff. span", figstyle.SLOT["aqua"]), (3, "sym. dihedral", figstyle.SLOT["violet"])):
         ax.plot(t, V[:, c], color=col, lw=0.9, label=nm)
-    ax.set_ylabel("command (m)"); ax.set_xlabel("time (s)"); ax.legend(loc="upper right", ncol=4, fontsize=5.4); figstyle.panel_label(ax, "c", x=-0.14)
-    fig.tight_layout(h_pad=0.4); figstyle.save(fig, os.path.join(FIG, "fig_timehistory"))
+    ax.set_ylabel("command (m)"); ax.set_xlabel("time (s)"); ax.legend(loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=4, fontsize=5.4, frameon=False, borderaxespad=0.1, handlelength=1.2, columnspacing=0.8); figstyle.panel_label(ax, "c", x=-0.14)
+    fig.tight_layout(h_pad=1.1); figstyle.save(fig, os.path.join(FIG, "fig_timehistory"))
 
 
 def fig_learning():
