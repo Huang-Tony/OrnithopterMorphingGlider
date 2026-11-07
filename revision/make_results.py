@@ -226,6 +226,81 @@ def fig_learning():
 best_classical_cache = {}
 
 
+ROBUST_LABELS = [("nominal", "Nominal"), ("tau_100", r"Actuator $\tau$ = 100 ms"), ("tau_140", r"Actuator $\tau$ = 140 ms"),
+                 ("struct_mode", "Structural mode 2.65 Hz"), ("aero_v1", "Aero model of submission"),
+                 ("lift_low", r"Lift slope $\times$0.6"), ("mass_inertia", r"Mass $\times$1.4, inertia $\times$1.6"),
+                 ("gusts_x2", r"Gusts $\times$2"), ("noise_x3", r"Sensor noise $\times$3"),
+                 ("airframe_v2", "Lumped airframe (v2)"), ("cg_aft", "Static margin 3%")]
+ENVELOPE = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+
+
+def robust_rows():
+    """Per condition: SAC (5 seeds, hierarchical CI) and each classical controller in eval_robust/."""
+    rows = {}
+    conds = [c for c, _ in ROBUST_LABELS] + [f"env_{v:.2f}" for v in ENVELOPE]
+    cls = sorted({os.path.basename(f)[len("classical_"):].rsplit("_", 1)[0]
+                  for f in glob.glob(os.path.join(RB, "classical_*_nominal.json"))})
+    for cond in conds:
+        per = [load(os.path.join(RB, f"sac_baseline_seed{s}_{cond}.json")) for s in TRAIN_SEEDS]
+        per = [d["episodes"] for d in per if d]
+        if per:
+            rows[("SAC", cond)] = {k: hier_ci([ep_values(e, k) for e in per]) for k in ("rms_yaw_horizon", "failure")}
+        for c in cls:
+            d = load(os.path.join(RB, f"classical_{c}_{cond}.json"))
+            if d: rows[(c, cond)] = {k: boot_ci(ep_values(d["episodes"], k)) for k in ("rms_yaw_horizon", "failure")}
+    return rows, cls
+
+
+def fig_robustness(rows, cls):
+    if not rows: return
+    names = ["SAC"] + cls; cols = [color("baseline")] + [figstyle.CLASSICAL_GREYS[i] for i in (0, 3)][:len(cls)]
+    labs = [label("baseline")] + [label(c) for c in cls]
+    fig = plt.figure(figsize=(figstyle.DOUBLE, 3.6)); gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 0.7, 1.0], hspace=0.55, wspace=0.35)
+    axr = fig.add_subplot(gs[:, 0]); axf = fig.add_subplot(gs[:, 1], sharey=axr)
+    axe = fig.add_subplot(gs[0, 2]); axe2 = fig.add_subplot(gs[1, 2], sharex=axe)
+    conds = [(c, l) for c, l in ROBUST_LABELS if ("SAC", c) in rows]; y = np.arange(len(conds))[::-1]
+    off = np.linspace(0.18, -0.18, len(names))
+    for j, (n, col) in enumerate(zip(names, cols)):
+        for i, (c, _) in enumerate(conds):
+            if (n, c) not in rows: continue
+            for ax, k, sc in ((axr, "rms_yaw_horizon", 1), (axf, "failure", 100)):
+                m, lo, hi = (v * sc for v in rows[(n, c)][k])
+                ax.plot([lo, hi], [y[i] + off[j]] * 2, color=col, lw=0.8); ax.plot(m, y[i] + off[j], "o", ms=2.8, color=col)
+    axr.set_yticks(y); axr.set_yticklabels([l for _, l in conds]); axr.set_xlabel("RMS@H (rad/s)"); axr.set_xlim(left=0)
+    axf.set_xlabel("failure rate (%)"); axf.set_xlim(0, 100); plt.setp(axf.get_yticklabels(), visible=False)
+    for ax in (axr, axf): ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
+    for j, (n, col, lb) in enumerate(zip(names, cols, labs)):
+        pts = [(v, rows[(n, f"env_{v:.2f}")]) for v in ENVELOPE if (n, f"env_{v:.2f}") in rows]
+        if not pts: continue
+        v = np.array([p[0] for p in pts])
+        for ax, k, sc in ((axe, "rms_yaw_horizon", 1), (axe2, "failure", 100)):
+            m = np.array([p[1][k][0] for p in pts]) * sc; lo = np.array([p[1][k][1] for p in pts]) * sc
+            hi = np.array([p[1][k][2] for p in pts]) * sc
+            ax.fill_between(v, lo, hi, color=col, alpha=0.15, lw=0); ax.plot(v, m, "-o", color=col, ms=2.6, lw=1.0, label=lb)
+    axe.plot(ENVELOPE, ENVELOPE, color=figstyle.MUTED, lw=0.6, ls="--", label="zero tracking")
+    axe.set_ylabel("RMS@H (rad/s)"); axe2.set_ylabel("failure (%)"); axe2.set_xlabel(r"reference magnitude $|r_{\mathrm{ref}}|$ (rad/s)")
+    axe2.set_ylim(0, 100); axe.legend(loc="upper left", fontsize=5.5); plt.setp(axe.get_xticklabels(), visible=False)
+    for ax, l, x in ((axr, "a", -0.62), (axf, "b", -0.08), (axe, "c", -0.22), (axe2, "d", -0.22)): figstyle.panel_label(ax, l, x=x)
+    figstyle.save(fig, os.path.join(FIG, "fig_robustness"))
+
+
+def tuning_table():
+    """LaTeX rows: grid optimum, refined optimum, gain, selected parameters, failure at the selection."""
+    ct = load(os.path.join(RUNS_DIR, "analysis", "classical_tuning.json")) or {}
+    lines = []
+    for n in ["Heuristic", "Alloc-ML", "PID", "GS-PID", "LQR", "MPC"]:
+        t = ct.get(n)
+        if not t or "stage1_best" not in t: continue
+        sel = ", ".join(f"{k.replace('_', chr(92) + '_')} = {v:.3g}" for k, v in sorted(t["selected"].items()))
+        fsel = (t["stage2_best"] if t["selected"] == t["stage2_best"]["config"] else t["stage1_best"])["failure"]
+        edge = "yes" if any(t.get("stage1_best_on_grid_edge", {}).values()) else "no"
+        lines.append(f"{label(n)} & {t['stage1_best']['rms_h']:.3f} & {edge} & {t['selected_rms_h']:.3f} & "
+                     f"{100 * t['refinement_gain']:.1f} & {100 * fsel:.0f} & {sel}\\\\")
+    os.makedirs(FIG, exist_ok=True)
+    open(os.path.join(FIG, "tab_tuning_rows.tex"), "w").write("\n".join(lines) + "\n")
+    return lines
+
+
 def main():
     figstyle.apply()
     data = collect(); S = summarise(data)
@@ -262,6 +337,13 @@ def main():
     out["macros"] = mac
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "results_summary.json"))
     fig_performance(S); fig_extended(S); fig_timehistory(data); fig_learning()
+    rows, cls = robust_rows(); fig_robustness(rows, cls); tuning_table()
+    rob = {f"{n}|{c}": v for (n, c), v in rows.items()}; out["robustness"] = rob
+    for (n, c), v in rows.items():
+        if c.startswith("env_"): continue
+        key = "".join(w.capitalize() for w in c.replace("x", "X").split("_")); who = "Sac" if n == "SAC" else tag.get(n, n)
+        mac[f"Rob{who}{key}Rmsh"] = fm(v["rms_yaw_horizon"][0]); mac[f"Rob{who}{key}Fail"] = fm(100 * v["failure"][0], "{:.0f}")
+    out["macros"] = mac; dump_json(out, os.path.join(RUNS_DIR, "analysis", "results_summary.json"))
     for key in sorted(S):
         r = S[key]; print(f"{key:<30} RMS@H {r['rms_yaw_horizon'][0]:.3f} [{r['rms_yaw_horizon'][1]:.3f},{r['rms_yaw_horizon'][2]:.3f}] "
                           f"fail {100*r['failure'][0]:.0f}% settle {r['mean_settle_time'][0]:.2f}s roll {r['rms_roll_deg'][0]:.1f}deg (seeds {r['n_seeds']})")
