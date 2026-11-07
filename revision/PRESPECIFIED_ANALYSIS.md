@@ -51,3 +51,25 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   5 seeds (15 runs), run in balanced order (one seed per paradigm per round). Reported alongside the 1M comparison
   with the same statistics; no 3M runs for any single paradigm (an unequal budget between the learned variants is
   exactly what the reviewers criticised).
+
+
+## Note 2026-11-08 02:25 (user instruction: finish 1M first; improve the curriculum before any 2M run)
+
+* The 2M runner (budget_sensitivity.py) was stopped before launching any job; no 2M run exists.
+* Diagnosis of the original curriculum (morphing_glider/training/curriculum.py + phases.py), from its design only:
+  phases change the dynamics (roll/pitch moments scaled by 0.10-0.90), the termination limit (90 -> 65 deg),
+  the reward (stability weight, shaping), the action mapping (dihedral scaled 0 -> 1) and the learning rate,
+  while 70% of the replay buffer is carried across phases -> the critic is trained on transitions that are not
+  valid for the target MDP; the unmodified task receives only ~1/6 of the budget.
+* Selection leakage found: within each phase the original curriculum restores its best checkpoint according to
+  the training-time evaluation (25 episodes, seeds EVAL_SEED_BASE+i, rand 1.0), which are identical to episodes
+  0-24 of the randomized evaluation set (same protocol, revision/evaluate.py). Its randomized-condition results
+  are therefore optimistic. Reported: all 50 episodes as pre-specified, plus episodes 25-49 (not used for
+  selection) as a check; flat SAC selects nothing.
+* New method (development, not pre-specified): task-distribution curriculum (morphing_glider/training/
+  task_curriculum.py): phases change only the commanded yaw-rate set, the randomization range and the hold
+  time; dynamics, reward, termination, action mapping, optimizer, learning rate identical to flat SAC; replay
+  buffer never reset; no checkpoint selection; last phase = flat-SAC training distribution (55% of budget).
+  Development tests (revision/task_curriculum_tests.py, 500k steps, seeds 17/117) compare training-time curves
+  with flat SAC; they use the training-time evaluation episodes for development only, and any final comparison
+  uses the full pre-specified evaluation protocol.
