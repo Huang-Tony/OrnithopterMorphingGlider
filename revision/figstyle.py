@@ -23,7 +23,7 @@ INK = "#1a1a1a"; INK2 = "#4d4d4d"; MUTED = "#8c8c8c"; LIGHT = "#d9d9d9"; GRID = 
 FILL_BLUE = "#dbe8f9"; FILL_GREY = "#efefef"
 
 ENTITY = {
-    "baseline": SLOT["blue"], "Baseline SAC": SLOT["blue"],
+    "baseline": SLOT["blue"], "Baseline SAC": SLOT["blue"], "Flat SAC": SLOT["blue"],
     "curriculum": SLOT["orange"], "Curriculum SAC": SLOT["orange"],
     "residual_curriculum": SLOT["aqua"], "Residual SAC": SLOT["aqua"],
     "KAN": SLOT["violet"], "KAN student": SLOT["violet"],
@@ -31,7 +31,7 @@ ENTITY = {
 }
 CLASSICAL_GREYS = ["#404040", "#5c5c5c", "#787878", "#949494", "#b0b0b0", "#c8c8c8", "#2b2b2b"]
 
-LABELS = {"baseline": "Baseline SAC", "curriculum": "Curriculum SAC", "residual_curriculum": "Residual SAC",
+LABELS = {"baseline": "Flat SAC", "curriculum": "Curriculum SAC", "residual_curriculum": "Residual SAC",
           "Alloc-ML": "Alloc-ML", "Heuristic": "Heuristic", "PID": "PID", "GS-PID": "GS-PID",
           "LQR": "LQR", "MPC": "MPC", "Zero": "Zero action"}
 
