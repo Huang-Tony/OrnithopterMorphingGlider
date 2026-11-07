@@ -139,6 +139,12 @@ def main():
                        "rmse_second_order_median": float(np.median([f["rmse_second_order"] for f in fits])),
                        "rmse_sim_tau007_median": float(np.median([f["rmse_sim_tau007"] for f in fits])),
                        "per_step": [{k: v for k, v in f.items() if not k.startswith("_")} for f in fits]}
+    fast = taus[taus < 0.06]; slow = taus[taus >= 0.06]
+    out["actuator"]["tau_clusters"] = {"fast_n": int(fast.size), "fast_median_s": float(np.median(fast)) if fast.size else None,
+                                       "fast_range_s": [float(fast.min()), float(fast.max())] if fast.size else None,
+                                       "slow_n": int(slow.size), "slow_median_s": float(np.median(slow)) if slow.size else None,
+                                       "slow_range_s": [float(slow.min()), float(slow.max())] if slow.size else None,
+                                       "note": "fast = servo-dominated steps, slow = viscoelastic creep of the compliant joint"}
     try:
         ring = read_csv("servo_ringing.csv")
         fn = [float(r["f_hz"]) for r in ring if r["signal"].startswith("mode 2")]
@@ -190,35 +196,36 @@ def main():
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "planb_fold_validation.json"))
 
     # ---- figure ----
-    fig, axs = plt.subplots(1, 3, figsize=(7.2, 2.5))
+    fig, axs = plt.subplots(1, 3, figsize=(figstyle.DOUBLE, 2.2))
     ax = axs[0]; ex = sorted(fits, key=lambda f: f["speed_deg_s"])
     pick = [ex[len(ex) // 2], ex[-1]] if len(ex) > 1 else ex
     for f, col in zip(pick, (figstyle.SLOT["blue"], figstyle.SLOT["orange"])):
-        ax.plot(np.array(f["_t"]) * 1000, f["_qn"], "o", ms=2.2, mfc="white", mec=col, mew=0.8)
-        ax.plot(np.array(f["_t"]) * 1000, f["_fit1"], "-", color=col, lw=1.2,
+        ax.plot(np.array(f["_t"]) * 1000, f["_qn"], "o", ms=1.8, mfc="white", mec=col, mew=0.5)
+        ax.plot(np.array(f["_t"]) * 1000, f["_fit1"], "-", color=col, lw=0.9,
                 label=f"{f['speed_deg_s']:.0f}°/s: τ = {1000*f['tau_s']:.0f} ms")
-        ax.plot(np.array(f["_t"]) * 1000, f["_sim07"], ":", color=col, lw=1.2)
+        ax.plot(np.array(f["_t"]) * 1000, f["_sim07"], ":", color=col, lw=0.9)
     ax.set_xlabel("time from command onset (ms)"); ax.set_ylabel("normalised fold $q_n$")
-    ax.legend(loc="lower right", fontsize=6.3); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "a")
-    ax.text(250, 0.25, "dotted: simulator\nlag, τ = 70 ms", fontsize=6.3, color=figstyle.INK2)
+    ax.legend(loc="lower right", fontsize=5.6); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "a")
+    ax.text(250, 0.25, "dotted: simulator\nlag, τ = 70 ms", fontsize=5.6, color=figstyle.INK2)
     ax = axs[1]
     sp = np.array([f["speed_deg_s"] for f in fits])
-    ax.plot(sp, 1000 * taus, "o", ms=3.5, mfc="white", mec=figstyle.SLOT["blue"], mew=1.1, label="first-order fit")
-    ax.axhline(70, color=figstyle.INK, lw=1.0, ls="--", label="simulator τ")
-    ax.set_xscale("log"); ax.set_xlabel("commanded speed (°/s)"); ax.set_ylabel("τ (ms)"); ax.legend(fontsize=6.3)
+    ax.plot(sp, 1000 * taus, "o", ms=2.6, mfc="white", mec=figstyle.SLOT["blue"], mew=0.7, label="first-order fit")
+    ax.axhline(70, color=figstyle.INK, lw=0.7, ls="--", label="simulator τ")
+    ax.set_xscale("log"); ax.set_xlabel("commanded speed (°/s)"); ax.set_ylabel("τ (ms)"); ax.legend(fontsize=5.6)
     figstyle.panel_label(ax, "b")
     ax = axs[2]
     for tag, col in (("rest", figstyle.SLOT["blue"]), ("max_fold", figstyle.SLOT["orange"])):
         d = rep[tag]; P = np.array(d["pts"]); C = np.array(d["cubic"]); S = np.array(d["solver"])
-        ax.plot(P[:, 1], -P[:, 0], "o", ms=3.0, mfc="white", mec=col, mew=1.0)
-        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=1.2, label=f"{'rest' if tag=='rest' else 'full fold'}: cubic fit")
-        ax.plot(S[:, 1], -S[:, 0], ":", color=col, lw=1.2)
+        ax.plot(P[:, 1], -P[:, 0], "o", ms=2.4, mfc="white", mec=col, mew=0.6)
+        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=0.9, label=f"{'rest' if tag=='rest' else 'full fold'}: cubic fit")
+        ax.plot(S[:, 1], -S[:, 0], ":", color=col, lw=0.9)
     ax.set_xlabel("outboard y (mm)"); ax.set_ylabel("forward −x (mm)"); ax.set_aspect("equal", adjustable="datalim")
-    ax.legend(fontsize=6.3, loc="lower left"); figstyle.panel_label(ax, "c")
+    ax.legend(fontsize=5.6, loc="lower left"); figstyle.panel_label(ax, "c")
     ax.text(0.98, 0.95, "dotted: energy-solver\nprediction from tip only", transform=ax.transAxes, ha="right", va="top",
-            fontsize=6.3, color=figstyle.INK2)
+            fontsize=5.6, color=figstyle.INK2)
     fig.tight_layout(); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_planb_fold"))
     a = out["actuator"]; s = out["spar_shape"]
+    print("tau clusters:", a["tau_clusters"])
     print(f"actuator: n={a['n_steps']} tau median {1000*a['tau_median_s']:.0f} ms IQR {[round(1000*x) for x in a['tau_iqr_s']]} delay {1000*a['delay_median_s']:.0f} ms; "
           f"2nd-order wn {a['wn_median_rad_s']:.1f} rad/s zeta {a['zeta_median']:.2f}; RMSE 1st {a['rmse_first_order_median']:.3f} 2nd {a['rmse_second_order_median']:.3f} sim0.07 {a['rmse_sim_tau007_median']:.3f}")
     print("wing mode:", out["wing_mode"], "relaxation:", out["relaxation_time_constant_s"])

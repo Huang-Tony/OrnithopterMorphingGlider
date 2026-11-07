@@ -175,7 +175,7 @@ class TestVirtualTendonHeuristicController:
 
     def test_zero_error_within_deadband(self):
         """When error is within deadband, yaw sweep should be zero but z-twist feedforward fires."""
-        ctrl = VirtualTendonHeuristicController(deadband=0.1)
+        ctrl = VirtualTendonHeuristicController(deadband=0.1, z_ff_slope=-0.1)   # R1: default slope is now 0
         obs = _make_dummy_obs(yaw_ref=0.05, omega_r=0.0)
         action, _ = ctrl.predict(obs)
         # Yaw sweep (x) should be zero due to deadband

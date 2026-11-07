@@ -97,19 +97,25 @@ class SISOYawController:
 
     def _mpc(self, r, rref, N=10):
         """Offset-free MPC: state X=[e, z], e=r-r_ref, z=int e; e_{k+1}=Ad e_k+Bd u_k-(1-Ad) r_ref,
-        z_{k+1}=z_k+dt e_k; min sum X'QX + R u^2 s.t. |u|<=1, solved as bounded least squares."""
+        z_{k+1}=z_k+dt e_k; min sum X'QX + R u^2 s.t. |u|<=1, solved as bounded least squares.
+        The prediction matrices depend only on (Ad, Bd, gain) and are built once."""
         from scipy.optimize import lsq_linear
-        A = np.array([[self.Ad, 0.0], [self.dt, 1.0]]); Bv = np.array([self.Bd, 0.0])
+        if getattr(self, "_mpc_cache", None) is None:
+            A = np.array([[self.Ad, 0.0], [self.dt, 1.0]]); Bv = np.array([self.Bd, 0.0])
+            Apow = [np.linalg.matrix_power(A, k) for k in range(N + 1)]
+            Gam = np.zeros((2 * N, N))
+            for k in range(N):
+                for j in range(k + 1):
+                    Gam[2 * k:2 * k + 2, j] = Apow[k - j] @ Bv
+            Qs = np.sqrt(np.array([1.0, 2.0 * self.gain ** 2])); W = np.tile(Qs, N)
+            A_ls = np.vstack([W[:, None] * Gam, math.sqrt(0.05) * np.eye(N)])
+            Phi = np.vstack([Apow[k + 1] for k in range(N)])                       # (2N x 2)
+            Cs = np.vstack([sum(Apow[j] for j in range(k + 1)) for k in range(N)])   # accumulates the constant c
+            self._mpc_cache = (A_ls, W, Phi, Cs)
+        A_ls, W, Phi, Cs = self._mpc_cache
         c = np.array([-(1.0 - self.Ad) * rref, 0.0])
-        Qs = np.sqrt(np.array([1.0, 2.0 * self.gain ** 2])); Rs = math.sqrt(0.05)
-        X0 = np.array([r - rref, -self.i])
-        Gam = np.zeros((2 * N, N)); off = np.zeros(2 * N); Xf = X0.copy(); Ak = np.eye(2)
-        for k in range(N):
-            Xf = A @ Xf + c; off[2 * k:2 * k + 2] = Xf
-            for j in range(k + 1):
-                Gam[2 * k:2 * k + 2, j] = np.linalg.matrix_power(A, k - j) @ Bv
-        W = np.tile(Qs, N)
-        A_ls = np.vstack([W[:, None] * Gam, Rs * np.eye(N)]); b = np.concatenate([-W * off, np.zeros(N)])
+        off = Phi @ np.array([r - rref, -self.i]) + Cs @ c
+        b = np.concatenate([-W * off, np.zeros(N)])
         return float(lsq_linear(A_ls, b, bounds=(-1.0, 1.0), method="bvls").x[0])
 
     def predict(self, obs, state=None, episode_start=None, deterministic=True):

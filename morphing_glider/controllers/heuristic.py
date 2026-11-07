@@ -15,8 +15,8 @@ class VirtualTendonHeuristicController:
     """
 
     def __init__(self, *, yaw_rate_max=0.6, deadband=0.02, smooth=0.25,
-                 x_range=0.25, z_ff_slope=-0.1408,
-                 roll_gain=0.15, roll_rate_gain=0.05,
+                 x_range=0.45, z_ff_slope=0.0,
+                 roll_gain=0.30, roll_rate_gain=0.05,
                  pitch_gain=0.10, pitch_rate_gain=0.03):
         self.yaw_rate_max = float(max(1e-6, yaw_rate_max))
         self.deadband = float(deadband)
@@ -59,15 +59,18 @@ class VirtualTendonHeuristicController:
         dz_R = float(np.clip(self.z_ff_slope * yaw_ref, DZ_RANGE[0], DZ_RANGE[1]))
         dz_L = float(np.clip(-self.z_ff_slope * yaw_ref, DZ_RANGE[0], DZ_RANGE[1]))
 
-        # --- 2. ROLL DAMPING: Differential y to counteract roll ---
+        # --- 2. ROLL DAMPING: differential span (revision R1: y is mirrored between the wings, so a true
+        #        differential span command is dy_R = dy_L; the v1 code used dy_L = -dy_R, i.e. a symmetric
+        #        span change that produces no rolling moment) ---
         roll_err = sin_roll  # sin(roll) ~ roll for small angles
         dy_roll = -self.roll_gain * (roll_err + self.roll_rate_gain * omega_p)
         dy_R = +dy_roll
-        dy_L = -dy_roll
+        dy_L = +dy_roll
 
-        # --- 3. PITCH DAMPING: Symmetric x adjustment ---
+        # --- 3. PITCH DAMPING: symmetric sweep (revision R1: dM_y/d(sym sweep) < 0, so the restoring command
+        #        has the same sign as the pitch angle; the v1 sign was destabilising) ---
         pitch_err = sin_pitch  # sin(pitch) ~ pitch for small angles
-        dx_pitch = -self.pitch_gain * (pitch_err + self.pitch_rate_gain * omega_q)
+        dx_pitch = +self.pitch_gain * (pitch_err + self.pitch_rate_gain * omega_q)
 
         # --- Combine ---
         dx_R = dx_yaw_R + dx_pitch

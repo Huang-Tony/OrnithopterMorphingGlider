@@ -41,7 +41,20 @@ def helmbold(a0):
 
 def proxy_cl(alpha_rad, ph):
     a = np.clip(alpha_rad + ph["alpha0"], -ph["alpha_clip"], ph["alpha_clip"])
-    return ph["lift_scale"] * ph["cl_max"] * np.tanh(ph["cl_alpha"] * a / ph["cl_max"])
+    if ph.get("cl_sat_n") is None:
+        return ph["lift_scale"] * ph["cl_max"] * np.tanh(ph["cl_alpha"] * a / ph["cl_max"])
+    x = ph["cl_alpha"] * a; n = ph["cl_sat_n"]
+    cl = x / (1.0 + np.abs(x / ph["cl_max"]) ** n) ** (1.0 / n)
+    z = np.clip((np.abs(a) - ph["alpha_stall"]) / 0.03, 0.0, 1.0)
+    cl = cl * (1.0 - (1.0 - ph.get("post_stall_cl_factor", 1.0)) * z * z * (3 - 2 * z))
+    return ph["lift_scale"] * cl
+
+
+def v1_phys():
+    import json
+    v1 = json.load(open(os.path.join(REPO, "revision", "data", "aero_calibration_e387.json")))["v1_values"]
+    ph = dict(NOMINAL_PHYS); ph.update(v1); ph.pop("cl_sat_n", None); ph["post_stall_cl_factor"] = 1.0
+    return ph
 
 
 def proxy_cd(cl_eff, alpha_rad, ph):
@@ -63,6 +76,7 @@ def main():
                           "alpha_clmax_deg": float(a[i_max]),
                           "alpha_stall_drop_deg": float(a[post[0]]) if post.size else None,
                           "cd_min": float(np.nanmin(cd)), "a_3D_helmbold_per_rad": helmbold(a0)}
+    out["v1_proxy"] = {k: v for k, v in v1_phys().items() if k in ("cl_alpha", "lift_scale", "cl_max", "cd0", "k_induced", "alpha0", "alpha_stall")}
     s_cla = ph["lift_scale"] * ph["cl_alpha"]
     out["proxy"] = {"cl_alpha_local": ph["cl_alpha"], "lift_scale": ph["lift_scale"], "effective_slope_per_rad": s_cla,
                     "effective_cl_max": ph["lift_scale"] * ph["cl_max"], "alpha0_deg": math.degrees(ph["alpha0"]),
@@ -71,7 +85,8 @@ def main():
         r = out[f"Re{Re}"]
         out[f"Re{Re}"]["proxy_slope_rel_err"] = s_cla / r["a_3D_helmbold_per_rad"] - 1.0
         out[f"Re{Re}"]["proxy_clmax_rel_err"] = out["proxy"]["effective_cl_max"] / r["cl_max"] - 1.0
-        out[f"Re{Re}"]["proxy_stall_minus_meas_deg"] = out["proxy"]["alpha_stall_deg"] - (r["alpha_stall_drop_deg"] or np.nan)
+        # both angles measured from zero lift (the proxy's alpha_stall acts on alpha + alpha0)
+        out[f"Re{Re}"]["proxy_stall_minus_meas_deg"] = out["proxy"]["alpha_stall_deg"] - ((r["alpha_stall_drop_deg"] or np.nan) - r["alpha_L0_deg"])
     # domain-randomisation envelope of the proxy law (rand_scale = 1)
     rng = np.random.default_rng(0); dr = DomainRandomizer(enabled=True, scale=1.0)
     draws = [dr.sample(rng) for _ in range(2000)]
@@ -91,37 +106,41 @@ def main():
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "aero_validation_e387.json"))
 
     # ---- figure: (a) lift vs angle relative to zero-lift angle, (b) drag polar ----
-    fig, axs = plt.subplots(1, 2, figsize=(7.0, 2.7))
+    fig, axs = plt.subplots(1, 2, figsize=(figstyle.DOUBLE, 2.35))
     ax = axs[0]; aa = np.radians(np.linspace(-6, 20, 300))
     # proxy, plotted against angle from its own zero-lift angle (alpha + alpha0)
     curves = np.array([proxy_cl(aa - ph["alpha0"], d_) for d_ in draws[:400]])
     x_proxy = np.degrees(aa)
-    ax.fill_between(x_proxy, np.percentile(curves, 5, 0), np.percentile(curves, 95, 0), color=figstyle.GRID,
-                    lw=0, label="Proxy, randomised 5–95%")
-    ax.plot(x_proxy, proxy_cl(aa - ph["alpha0"], ph), color=figstyle.INK, lw=1.5, label="Proxy, nominal")
+    ax.fill_between(x_proxy, np.percentile(curves, 5, 0), np.percentile(curves, 95, 0), color=figstyle.LIGHT, alpha=0.55,
+                    lw=0, label="v2, randomised 5–95%")
+    ax.plot(x_proxy, proxy_cl(aa - ph["alpha0"], ph), color=figstyle.INK, lw=1.0, label="Proxy v2 (calibrated)")
+    p1 = v1_phys(); ax.plot(x_proxy, proxy_cl(aa - p1["alpha0"], p1), color=figstyle.MUTED, lw=0.9, ls="--",
+                            label="Proxy v1 (submitted)")
     for Re, col in ((100000, figstyle.SLOT["blue"]), (200000, figstyle.SLOT["orange"])):
         d = E[Re]; aL0 = out[f"Re{Re}"]["alpha_L0_deg"]
-        ax.plot(d[:, 0] - aL0, d[:, 1], "o", ms=3.2, mfc="white", mec=col, mew=1.1,
+        ax.plot(d[:, 0] - aL0, d[:, 1], "o", ms=2.6, mfc="white", mec=col, mew=0.7,
                 label=f"E387, Re = {Re/1e5:.0f}×10$^5$ (2-D)")
         a3 = out[f"Re{Re}"]["a_3D_helmbold_per_rad"]
-        xs = np.linspace(0, 9, 10); ax.plot(xs, a3 * np.radians(xs), "--", color=col, lw=1.0)
+        xs = np.linspace(0, 9, 10); ax.plot(xs, a3 * np.radians(xs), "--", color=col, lw=0.7)
     ax.set_xlabel(r"$\alpha - \alpha_{L0}$ (deg)"); ax.set_ylabel(r"$c_l$"); ax.set_xlim(-4, 20); ax.set_ylim(-0.3, 1.45)
-    ax.legend(loc="lower right", fontsize=6.5); figstyle.panel_label(ax, "a")
-    ax.text(8.6, 0.42, "dashed: finite-wing\nslope (Helmbold, AR=13.3)", fontsize=6.3, color=figstyle.INK2)
+    ax.legend(loc="lower right", fontsize=5.8); figstyle.panel_label(ax, "a")
+    ax.text(-3.4, 1.36, "coloured dashes: finite-wing\nslope from 2-D data\n(Helmbold, AR = 13.3)", fontsize=5.5,
+            color=figstyle.INK2, va="top")
     ax = axs[1]
     cl_p = np.linspace(0.0, 1.15, 100)
     cd_curves = np.array([d_["cd0"] + d_["k_induced"] * (cl_p / d_["lift_scale"]) ** 2 for d_ in draws[:400]])
-    ax.fill_between(cl_p, np.percentile(cd_curves, 5, 0), np.percentile(cd_curves, 95, 0), color=figstyle.GRID, lw=0)
-    ax.plot(cl_p, ph["cd0"] + ph["k_induced"] * (cl_p / ph["lift_scale"]) ** 2, color=figstyle.INK, lw=1.5)
+    ax.fill_between(cl_p, np.percentile(cd_curves, 5, 0), np.percentile(cd_curves, 95, 0), color=figstyle.LIGHT, alpha=0.55, lw=0)
+    ax.plot(cl_p, ph["cd0"] + ph["k_induced"] * (cl_p / ph["lift_scale"]) ** 2, color=figstyle.INK, lw=1.0)
+    p1 = v1_phys(); ax.plot(cl_p, p1["cd0"] + p1["k_induced"] * (cl_p / p1["lift_scale"]) ** 2, color=figstyle.MUTED, lw=0.9, ls="--")
     e_osw = 0.95
     for Re, col in ((100000, figstyle.SLOT["blue"]), (200000, figstyle.SLOT["orange"])):
         d = E[Re]; ok = np.isfinite(d[:, 2])
         cd3 = d[ok, 2] + d[ok, 1] ** 2 / (math.pi * e_osw * AR)      # profile + ideal induced drag
-        ax.plot(d[ok, 1], cd3, "o", ms=3.2, mfc="white", mec=col, mew=1.1)
-    ax.text(0.03, 0.074, "E387: measured profile drag + ideal induced\ndrag $c_l^2/(\\pi e\\,AR)$, e = 0.95", fontsize=6.3,
-            color=figstyle.INK2, va="top")
+        ax.plot(d[ok, 1], cd3, "o", ms=2.6, mfc="white", mec=col, mew=0.7)
+    ax.text(0.47, 0.003, "E387: measured profile drag + ideal induced\ndrag $c_l^2/(\\pi e\\,AR)$, e = 0.95", fontsize=5.5,
+            color=figstyle.INK2, va="bottom")
     ax.set_xlabel(r"$c_l$"); ax.set_ylabel(r"$c_d$ (section, incl. induced)"); ax.set_ylim(0, 0.08); figstyle.panel_label(ax, "b")
-    fig.tight_layout(); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_aero_validation"))
+    fig.tight_layout(w_pad=2.0); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_aero_validation"))
     for Re in E:
         r = out[f"Re{Re}"]
         print(f"Re={Re}: a0={r['a0_2D_per_rad']:.2f}/rad aL0={r['alpha_L0_deg']:.2f} deg clmax={r['cl_max']:.3f} @ {r['alpha_clmax_deg']:.1f} "
