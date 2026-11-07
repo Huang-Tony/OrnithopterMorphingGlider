@@ -128,7 +128,7 @@ def make_video(name, panels, fps=25, quick=False, title=""):
         ax_u.plot(t_axis[:m], 0.5 * (a[:, 0] - a[:, 3]), color=col, lw=1.2)
     ax_r.set_ylabel("yaw rate (rad/s)"); ax_a.set_ylabel("roll — / pitch ··· (deg)")
     ax_u.set_ylabel("diff. sweep cmd (m)"); ax_u.set_xlabel("time (s)")
-    ax_r.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=len(panels) + 1,
+    ax_r.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=min(len(panels) + 1, 4),
                 borderaxespad=0.2)   # above the axes, never over the data
     for a in (ax_r, ax_a, ax_u):
         a.set_xlim(0, T * DT); a.spines[["top", "right"]].set_visible(False)
