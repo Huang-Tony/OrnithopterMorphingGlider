@@ -325,7 +325,8 @@ def main():
                 for suf in ("", "Lo", "Hi"):
                     M.setdefault(f"R{t}{c}{m}{suf}", r"\textbf{??}")
     for c in ("Nom", "Rand"):
-        for k in ("RBestClassical", "RRatioBest", "RPBest", "RRedBest", "RFactorBest"):
+        for k in ("RBestClassical", "RRatioBest", "RPBest", "RRedBest", "RFactorBest", "RSeedBetter", "RSeedN", "RSeedImpMin",
+                  "RSeedImpMax", "RSeedDiff", "RSeedDiffLo", "RSeedDiffHi"):
             M.setdefault(f"{k}{c}", r"\textbf{??}")
         for o in ("Curr", "Resid"):
             M.setdefault(f"RPBaseVs{o}{c}", r"\textbf{??}"); M.setdefault(f"RDBaseVs{o}{c}", r"\textbf{??}")

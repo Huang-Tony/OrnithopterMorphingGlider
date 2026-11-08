@@ -118,6 +118,28 @@ def seed_level(data, a, b, cond, k="rms_yaw_horizon"):
     return out
 
 
+def seed_level_vs_classical(data, a, b, cond, k="rms_yaw_horizon", n=4000):
+    """Seed-level comparison of a SAC variant (5 training seeds) with a deterministic controller on the same
+    episodes: per-seed relative improvement, and a hierarchical-bootstrap CI of the mean difference a - b (resample
+    training seeds, then paired episodes within each seed). Avoids treating the 250 episodes as independent."""
+    if (a, cond) not in data or (b, cond) not in data: return None
+    bv = {e["seed"]: e[k] for e in data[(b, cond)][0]}
+    per = []
+    for eps in data[(a, cond)].values():
+        x = np.array([e[k] for e in eps if e["seed"] in bv]); y = np.array([bv[e["seed"]] for e in eps if e["seed"] in bv])
+        per.append((x, y))
+    imp = [100 * (1 - x.mean() / y.mean()) for x, y in per]
+    bs = []
+    for _ in range(n):
+        idx = RNG.integers(0, len(per), len(per)); d = []
+        for i in idx:
+            x, y = per[i]; j = RNG.integers(0, x.size, x.size); d.append((x[j] - y[j]).mean())
+        bs.append(np.mean(d))
+    diff = float(np.mean([(x - y).mean() for x, y in per]))
+    return {"n_seeds": len(per), "n_better": int(sum(i > 0 for i in imp)), "improvement_pct_per_seed": imp,
+            "diff_mean": diff, "diff_ci": [float(np.percentile(bs, 2.5)), float(np.percentile(bs, 97.5))]}
+
+
 def best_classical(S, cond):
     c = [(S[f"{n}|{cond}"]["rms_yaw_horizon"][0], n) for n in CLASSICAL if f"{n}|{cond}" in S]
     return min(c)[1] if c else None
@@ -324,6 +346,7 @@ def main():
         for other in ("curriculum", "residual_curriculum"):
             tests[f"baseline_vs_{other}|{cond}"] = seed_level(data, "baseline", other, cond)
         tests[f"baseline_vs_kan|{cond}"] = paired_vs(data, "baseline", "KAN student", cond)
+        tests[f"baseline_vs_best_classical_seedlevel|{cond}"] = seed_level_vs_classical(data, "baseline", bc, cond)
     out = {"summary": S, "tests": tests, "best_classical": best_classical_cache}
     # macros for the manuscript
     mac = {}
@@ -352,6 +375,11 @@ def main():
         mac[f"RBestClassical{c}"] = str(t.get("best"))
         mac[f"RRatioBest{c}"] = fm(t.get("ratio", np.nan), "{:.2f}"); mac[f"RPBest{c}"] = pfm(t.get("p_wilcoxon", np.nan))
         mac[f"RRedBest{c}"] = fm(100 * (1 - t.get("ratio", np.nan)), "{:.0f}"); mac[f"RFactorBest{c}"] = fm(1 / t.get("ratio", np.nan), "{:.1f}")
+        sl = tests.get(f"baseline_vs_best_classical_seedlevel|{cond}") or {}
+        if sl:
+            mac[f"RSeedBetter{c}"] = f"{sl['n_better']}"; mac[f"RSeedN{c}"] = f"{sl['n_seeds']}"
+            mac[f"RSeedImpMin{c}"] = fm(min(sl["improvement_pct_per_seed"]), "{:.0f}"); mac[f"RSeedImpMax{c}"] = fm(max(sl["improvement_pct_per_seed"]), "{:.0f}")
+            mac[f"RSeedDiff{c}"] = fm(sl["diff_mean"]); mac[f"RSeedDiffLo{c}"] = fm(sl["diff_ci"][0]); mac[f"RSeedDiffHi{c}"] = fm(sl["diff_ci"][1])
         for other, o in (("curriculum", "Curr"), ("residual_curriculum", "Resid")):
             t2 = tests.get(f"baseline_vs_{other}|{cond}") or {}
             mac[f"RPBaseVs{o}{c}"] = pfm(t2.get("p_mannwhitney", np.nan)); mac[f"RDBaseVs{o}{c}"] = fm(t2.get("cohen_d", np.nan), "{:.2f}")
