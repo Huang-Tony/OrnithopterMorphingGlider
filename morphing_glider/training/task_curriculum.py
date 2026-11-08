@@ -114,6 +114,7 @@ def _build_env(*, seed, n_envs, max_steps, use_residual, prev_obs_rms=None, firs
 
 def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_every_steps, eval_episodes,
                               eval_seed_base, use_residual=False, schedule=TASK_SCHEDULE, callback=None, mode_prob=0.0,
+                              caps=None,
                               resume_dir: Optional[str] = None, pause_file: Optional[str] = None):
     from morphing_glider.evaluation import evaluate_controller, summarize_metrics
     from morphing_glider.config import DEVICE
@@ -126,6 +127,11 @@ def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_
 
     algo = ("residual_task_curriculum" if use_residual else "task_curriculum") if len(schedule) > 1 else "flat"
     if mode_prob > 0: algo += "_modeaware"
+    if caps: algo += "_caps"
+    from morphing_glider.training.caps import CAPSSAC
+    model_cls = CAPSSAC if caps else SAC
+    caps_kw = ({"caps_lambda_t": caps["lambda_t"], "caps_lambda_s": caps["lambda_s"], "caps_sigma": caps["sigma"]}
+               if caps else {})
     ends = phase_boundaries(total_timesteps, schedule)
     logs: Dict[str, Any] = {"evaltrace": [], "eval_details": [], "phase_boundaries": [],
                             "phases": [dict(p, targets=list(p["targets"]), hold=list(p["hold"]), end_step=e)
@@ -152,7 +158,7 @@ def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_
         if snap is None:
             vec, vecnorm = _build_env(seed=seed + 3000, n_envs=n_envs, max_steps=max_steps, use_residual=use_residual,
                                       first_phase=schedule[0], mode_prob=mode_prob)
-            model = build_sac_model_baseline(vec, seed=seed, tensorboard_log=f"tb_{algo}")
+            model = build_sac_model_baseline(vec, seed=seed, tensorboard_log=f"tb_{algo}", model_cls=model_cls, **caps_kw)
             apply_phase(0)
         else:
             S.update(snap["state"]); logs = S["logs"]
@@ -161,7 +167,7 @@ def train_task_curriculum_sac(*, total_timesteps, seed, n_envs, max_steps, eval_
                                       first_phase=schedule[int(S.get("phase", 0))], mode_prob=mode_prob)
             if vecnorm is not None and S.get("obs_rms") is not None:
                 vecnorm.obs_rms = copy.deepcopy(S["obs_rms"])
-            model = SAC.load(snap["model"], env=vec, device=DEVICE)
+            model = model_cls.load(snap["model"], env=vec, device=DEVICE)
             model.load_replay_buffer(snap["replay"])
             if callback is not None and hasattr(callback, "records"):
                 callback.records = list(S.get("diag_records", []))

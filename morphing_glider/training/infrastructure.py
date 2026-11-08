@@ -156,10 +156,12 @@ def apply_phase_runtime_settings(vec_env, phase):
 # SAC model construction
 # ================================================================
 
-def build_sac_model_baseline(vec_env, *, seed, tensorboard_log):
+def build_sac_model_baseline(vec_env, *, seed, tensorboard_log, model_cls=None, **model_kwargs):
+    """Flat-SAC model. model_cls/model_kwargs (revision R1) allow a SAC subclass, e.g. CAPS, with identical
+    hyperparameters."""
     action_dim = int(np.prod(vec_env.action_space.shape))
     policy_kwargs = dict(net_arch=[512, 256, 128], activation_fn=torch.nn.ReLU)
-    return SAC("MlpPolicy", vec_env, seed=int(seed), device=DEVICE, verbose=0,
+    return (model_cls or SAC)("MlpPolicy", vec_env, seed=int(seed), device=DEVICE, verbose=0, **model_kwargs,
                buffer_size=150_000 if FAST_DEV_RUN else 500_000,
                learning_starts=2_000 if FAST_DEV_RUN else 8_000,
                batch_size=256 if not FAST_DEV_RUN else 128,

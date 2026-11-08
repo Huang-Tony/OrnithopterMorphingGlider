@@ -22,7 +22,9 @@ from common import (RUNS_DIR, N_ENVS, MAX_STEPS_EP, EVAL_EVERY, TRAIN_EVAL_EPS, 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--algo", required=True, choices=["task_curriculum", "residual_task_curriculum", "flat_modeaware",
-                                                     "task_curriculum_modeaware"])
+                                                     "task_curriculum_modeaware", "flat_caps"])
+    ap.add_argument("--caps-t", type=float, default=1.0); ap.add_argument("--caps-s", type=float, default=0.5)
+    ap.add_argument("--caps-sigma", type=float, default=0.05)
     ap.add_argument("--mode-prob", type=float, default=None, help="probability of a randomized wing mode per episode")
     ap.add_argument("--seed", required=True, type=int)
     ap.add_argument("--steps", type=int, default=TOTAL_STEPS)
@@ -57,6 +59,7 @@ def main():
             use_residual=(args.algo == "residual_task_curriculum"), callback=diag,
             schedule=(FLAT_SCHEDULE if args.algo.startswith("flat") else TASK_SCHEDULE),
             mode_prob=(args.mode_prob if args.mode_prob is not None else (0.5 if "modeaware" in args.algo else 0.0)),
+            caps=({"lambda_t": args.caps_t, "lambda_s": args.caps_s, "sigma": args.caps_sigma} if "caps" in args.algo else None),
             resume_dir=resume_dir, pause_file=pause_file)
     except PauseRequested as e:
         print(f"[paused] {name}: {e}. Snapshot in {resume_dir}."); sys.exit(3)
