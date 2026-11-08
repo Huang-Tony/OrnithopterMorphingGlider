@@ -7,6 +7,7 @@ Input: revision_runs/videos/data/*.npz (from video_episodes.py, all on the same 
   S2  SAC teacher vs best tuned classical controller, side by side, same episode
   S3  training progress: SAC seed 7 checkpoints flying the same episode
   S4  SAC teacher vs distilled KAN student, side by side
+  S5  SAC (1M steps) vs SAC-S (smoothness fine-tuned, smooth_study.py), side by side; S1 and S2 show SAC-S when available
 Each frame shows the simulated state at that control step (40 ms); videos play in real time at 25 fps.
 Output: revision_runs/videos/S<k>_<name>.mp4 (H.264, yuv420p).
 """
@@ -165,13 +166,19 @@ def main():
     a = ap.parse_args()
     info = json.load(open(os.path.join(DATA, "episode.json")))
     teacher = load("sac_teacher")
+    smooth = load("sac_smooth") if os.path.exists(os.path.join(DATA, "sac_smooth.npz")) else None
+    main_pol, main_lab = (smooth, "SAC-S (smoothness fine-tuned)") if smooth is not None else (teacher, "SAC (trained policy)")
     cl = sorted(glob.glob(os.path.join(DATA, "classical_*.npz")))
-    jobs = {"S1": ("S1_sac_policy", [("SAC (trained policy)", teacher, C_A)],
-                   f"S1  Trained SAC policy, nominal evaluation episode (seed {info['eval_seed']})")}
+    jobs = {"S1": ("S1_sac_policy", [(main_lab, main_pol, C_A)],
+                   f"S1  Trained {'SAC-S' if smooth is not None else 'SAC'} policy, nominal evaluation episode (seed {info['eval_seed']})")}
     if cl:
         tag = os.path.basename(cl[0])[:-4]; name = tag.replace("classical_", "")
-        jobs["S2"] = ("S2_sac_vs_classical", [("SAC", teacher, C_A), (f"{name} (best tuned classical)", load(tag), C_B)],
-                      "S2  SAC vs best tuned classical controller, identical episode")
+        short = "SAC-S" if smooth is not None else "SAC"
+        jobs["S2"] = ("S2_sac_vs_classical", [(short, main_pol, C_A), (f"{name} (best tuned classical)", load(tag), C_B)],
+                      f"S2  {short} vs best tuned classical controller, identical episode")
+    if smooth is not None:
+        jobs["S5"] = ("S5_sac_vs_sac_smooth", [("SAC (1M steps)", teacher, "#8c8c8c"), ("SAC-S (+ smoothness fine-tuning)", smooth, C_A)],
+                      "S5  SAC before vs after smoothness fine-tuning, identical episode")
     ck = sorted(glob.glob(os.path.join(DATA, "sac_seed7_*.npz")))
     if ck:
         cols = ["#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"]

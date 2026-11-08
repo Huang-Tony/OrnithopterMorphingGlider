@@ -100,3 +100,26 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   Mann-Whitney p = 0.69 / 0.84); original curriculum 0.242 / 0.292 (p = 0.008 / 0.008).
 * Equal-2M runs started in the idle slots (revision/budget_sensitivity.py, revision_runs/budget2M): flat SAC and the
   task curriculum, 5 seeds each, balanced order. Residual variant at 2M left to the user. Stoppable at any time.
+
+
+## Note 2026-11-08 13:10 (command smoothness: CAPS from scratch stopped; warm-start fine-tuning, rule fixed)
+
+* CAPS from scratch (revision/caps_study.py; lambda_T = 5 selected by the 11:45 rule, which had no accuracy guard)
+  was stopped at 600k steps: seed 107 stayed at the do-nothing level (training-time RMS@H 0.45-0.46 from 50k to
+  600k steps), seed 7 was less reliable than flat SAC. Not reported as a result.
+* Diagnosis (flat SAC seed 7, 20 validation episodes): removing sensor noise and gusts halves the mean tip speed
+  (0.98 -> 0.50 m/s) and lowers the command share above 2 Hz from 29% to 22%; the rest is intrinsic.
+* New study: revision/smooth_study.py (smoothness fine-tuning of the 1M flat-SAC policies, +200k steps). Pilot
+  variants, selection rule (validation episodes only, accuracy guard <= 1.10 x base RMS@H in both conditions,
+  failures <= base + 2/30, HF share <= 2/3 of base; lowest HF share wins; none eligible -> stop) and evaluation are
+  fixed in its docstring before any result.
+
+
+## Note 2026-11-08 14:10 (smoothness fine-tuning: outcome)
+
+* Pilot (validation, seed 7): only caps1_jerk1 was admissible (RMS@H 0.125 vs 0.126 base nominal, 0.133 vs 0.133
+  randomized; HF 15% vs 29%); caps1 failed the accuracy guard (0.155), jerk1 the HF criterion (23%); the plain
+  continuation left HF at 31%. Selected: caps1_jerk1 (lambda_T 1, lambda_S 0.5, sigma 0.05, w_jerk 1.0, +200k steps).
+* Evaluation protocol, 5 seeds (analysis/smooth_summary.json, smooth_attitude.json): RMS@H 0.137 vs 0.138 nominal,
+  0.159 vs 0.172 randomized; HF 16% vs 35%; tip speed 0.64 vs 1.27 m/s; wing mode 99% vs 100% failures. Reported in
+  the paper as SAC-S (Sect. res_smooth, Table tab:smooth); not part of the equal-budget comparisons.

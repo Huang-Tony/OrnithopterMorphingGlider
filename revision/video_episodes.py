@@ -57,6 +57,10 @@ def main():
     dump_json({"teacher_seed": teacher, "episode_index": i, "eval_seed": seed, "teacher_rms_h": r_i,
                "teacher_median_rms_h": med, "rule": __doc__}, os.path.join(OUT, "episode.json"))
     pol = {"sac_teacher": load_sac(os.path.join(RUNS_DIR, "models", f"baseline_seed{teacher}.zip"))}
+    sj = os.path.join(RUNS_DIR, "analysis", "smooth_study.json")      # smoothness fine-tuned teacher (smooth_study.py)
+    if os.path.exists(sj) and json.load(open(sj)).get("selected"):
+        sp = os.path.join(RUNS_DIR, "smooth", "models", f"smooth_seed{teacher}_{json.load(open(sj))['selected']}.zip")
+        if os.path.exists(sp): pol["sac_smooth"] = load_sac(sp)
     for st in CKPT_STEPS:
         p = os.path.join(RUNS_DIR, "checkpoints", "baseline_seed7", f"step_{st:07d}.zip")
         if st == 1_000_000 and not os.path.exists(p): p = os.path.join(RUNS_DIR, "models", "baseline_seed7.zip")

@@ -244,6 +244,40 @@ def main():
             if e:
                 put(f"Filt{tag}Rmsh", e["rms_yaw_horizon"], "{:.3f}"); put(f"Filt{tag}Fail", 100 * e["failure"], "{:.0f}")
                 put(f"Filt{tag}TipSpeed", e["mean_tip_speed_mps"], "{:.2f}"); put(f"Filt{tag}Hf", 100 * e["hf_action_power_frac_2Hz"], "{:.0f}")
+    sm = J("smooth_summary.json")            # smoothness fine-tuning (smooth_study.py, smooth_summary.py)
+    if sm:
+        for c, tag in (("nominal", "Nom"), ("randomized", "Rand"), ("struct_mode", "Struct")):
+            row = sm["conditions"].get(c, {})
+            for k, q, sc, fmt in (("rms_yaw_horizon", "Rmsh", 1, "{:.3f}"), ("failure", "Fail", 100, "{:.1f}"),
+                                  ("hf_action_power_frac_2Hz", "Hf", 100, "{:.0f}"), ("mean_tip_speed_mps", "TipSpeed", 1, "{:.2f}"),
+                                  ("mean_sq_action_increment", "Inc", 1, "{:.3f}"), ("rms_roll_deg", "Roll", 1, "{:.1f}")):
+                v = row.get(k)
+                if not v: continue
+                if c == "struct_mode" and q == "Fail": fmt = "{:.0f}"
+                put(f"Smooth{tag}{q}", sc * v["smooth"], fmt); put(f"SmoothFlat{tag}{q}", sc * v["flat"], fmt)
+                if "diff_ci" in v:
+                    put(f"Smooth{tag}{q}Diff", sc * v["diff_mean"], "$" + fmt + "$")
+                    put(f"Smooth{tag}{q}DiffLo", sc * v["diff_ci"][0], "$" + fmt + "$")
+                    put(f"Smooth{tag}{q}DiffHi", sc * v["diff_ci"][1], "$" + fmt + "$")
+                    put(f"Smooth{tag}{q}SeedsLower", v["n_seeds_lower"], "{:d}")
+                if q in ("Hf", "TipSpeed", "Inc") and v["flat"]:
+                    put(f"Smooth{tag}{q}RedPct", 100 * (1 - v["smooth"] / v["flat"]), "{:.0f}")
+        tsp = sm["conditions"].get("nominal", {}).get("mean_tip_speed_mps")
+        rs = J("results_summary.json")
+        if rs and tsp:
+            h = rs["summary"].get("Heuristic|nominal", {})
+            if h.get("mean_tip_speed_mps"): put("SmoothTipVsHeur", tsp["smooth"] / h["mean_tip_speed_mps"][0], "{:.1f}")
+            if h.get("mean_sq_action_increment"): put("RHeurNomInc", h["mean_sq_action_increment"][0], "{:.3f}")
+        at = J("smooth_attitude.json")
+        if at:
+            for k, q in (("rms_pitch_deg", "Pitch"), ("rms_roll_deg", "RollAtt"), ("rms_pitch_rate_dps", "PitchRate")):
+                put(f"SmoothNom{q}", at["mean"][k]["smooth"], "{:.1f}"); put(f"SmoothFlatNom{q}", at["mean"][k]["flat"], "{:.1f}")
+        pil = sm.get("pilot", {})
+        for name, tag in (("base_1M", "Base"), ("caps1", "Caps"), ("jerk1", "Jerk"), ("caps1_jerk1", "Both"), ("cont", "Cont")):
+            p = pil.get(name, {}).get("nominal")
+            if p:
+                put(f"SmoothPilot{tag}Rmsh", p["rms_yaw_horizon"], "{:.3f}"); put(f"SmoothPilot{tag}Hf", 100 * p["hf_action_power_frac_2Hz"], "{:.0f}")
+                put(f"SmoothPilot{tag}TipSpeed", p["mean_tip_speed_mps"], "{:.2f}")
     sa = J("strategy.json")
     if sa:
         for name, tag in (("SAC", "Sac"), ("Curriculum", "Curr"), ("Residual", "Resid"), ("Heuristic", "Heur"), ("LQR", "Lqr"), ("MPC", "Mpc"), ("PID", "Pid")):
