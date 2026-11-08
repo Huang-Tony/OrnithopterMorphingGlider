@@ -177,6 +177,33 @@ def main():
         for strat, tag in (("strategy_baseline", "Base"), ("strategy_curriculum", "Curr")):
             st = it.get(strat, {})
             if st: put(f"Strat{tag}DsSlope", st["diff_sweep"]["slope_mean"], "{:.2f}"); put(f"Strat{tag}DsRsq", st["diff_sweep"]["r2_mean"], "{:.2f}")
+    vc = J("vlm_crosscheck.json")                 # independent vortex-lattice cross-check of the strip model
+    if vc:
+        put("VlmSignCheckClb", vc["sign_check"]["Clb"], "{:+.3f}")
+        rows = {(round(r["sym_span_m"], 2), round(r["sym_dihedral_m"], 2)): r for r in vc["shapes"]}
+        n = rows[(0.0, 0.0)]
+        for k, tag, f in (("Cl_beta", "Clb", "{:+.3f}"), ("CL_alpha", "CLa", "{:.2f}"), ("Cl_p", "Clp", "{:+.2f}"),
+                          ("CY_beta", "CYb", "{:+.2f}"), ("Cn_beta", "Cnb", "{:+.4f}"), ("CL", "CL", "{:.3f}")):
+            vk = {"Cl_beta": "Clb", "CL_alpha": "CLa", "Cl_p": "Clp", "CY_beta": "CYb", "Cn_beta": "Cnb", "CL": "CL"}[k]
+            put(f"VlmStrip{tag}", n["strip"][k], f); put(f"VlmVlm{tag}", n["vlm"][vk], f)
+        put("VlmClbRatioPct", 100 * (n["strip"]["Cl_beta"] / n["vlm"]["Clb"] - 1), "{:.0f}")
+        put("VlmCLaErrPct", 100 * abs(n["strip"]["CL_alpha"] / n["vlm"]["CLa"] - 1), "{:.0f}")
+        put("VlmClpErrPct", 100 * abs(n["strip"]["Cl_p"] / n["vlm"]["Clp"] - 1), "{:.0f}")
+        put("VlmCYbRatioPct", 100 * (n["strip"]["CY_beta"] / n["vlm"]["CYb"] - 1), "{:.0f}")
+        for sz, tag in ((0.05, "Five"), (0.10, "Ten"), (0.15, "Fifteen")):
+            r = rows.get((0.0, sz))
+            if r: put(f"VlmClbTips{tag}", r["vlm"]["Clb"], "{:+.3f}"); put(f"StripClbTips{tag}", r["strip"]["Cl_beta"], "{:+.3f}")
+        ld = J("lateral_derivatives.json")
+        if ld:   # skid sideslip for 0.6 rad/s with the vortex-lattice side force
+            Y_vlm = abs(n["vlm"]["CYb"]) * 0.5 * NOMINAL_PHYS["rho"] * NOMINAL_PHYS["V0"] ** 2 * 0.30
+            put("VlmSkidBetaDeg", math.degrees(NOMINAL_PHYS["mass"] * NOMINAL_PHYS["V0"] * 0.6 / Y_vlm), "{:.0f}")
+    ah = J("aero_holdout.json")
+    if ah:
+        m = ah["max_abs_rel_err"]
+        put("HoldClaPct", 100 * m["cl_alpha"], "{:.1f}"); put("HoldClmaxPct", 100 * m["cl_max"], "{:.1f}")
+        put("HoldStallDeg", max(abs(r["alpha_stall_deg_diff"]) for r in ah["pairs"].values()), "{:.1f}")
+        cd = [r["cd0"] for r in ah["pairs"].values()]
+        put("HoldCdLoPct", 100 * min(cd), "{:.0f}"); put("HoldCdHiPct", 100 * max(cd), "{:+.0f}")
     tv = J("task_curriculum_validation.json")      # validation episodes (seeds 60000+), development decision
     if tv:
         for grp, tag in (("flat", "Flat"), ("oldcur", "OldCur"), ("tc", "Tc")):
