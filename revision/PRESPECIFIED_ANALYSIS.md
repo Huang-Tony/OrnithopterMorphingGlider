@@ -123,3 +123,11 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
 * Evaluation protocol, 5 seeds (analysis/smooth_summary.json, smooth_attitude.json): RMS@H 0.137 vs 0.138 nominal,
   0.159 vs 0.172 randomized; HF 16% vs 35%; tip speed 0.64 vs 1.27 m/s; wing mode 99% vs 100% failures. Reported in
   the paper as SAC-S (Sect. res_smooth, Table tab:smooth); not part of the equal-budget comparisons.
+
+
+## Note 2026-11-08 16:20 (user decisions on the development studies)
+
+* Task-distribution curriculum: included in the paper as a test of the explanation for the original curriculum's
+  result (methods Sect. 4.4, results Sect. 5.7, Discussion), explicitly as a post-hoc variant evaluated once.
+* Mode-aware pilot (1 seed, validation episodes): mentioned in the Discussion as preliminary, with both sides of the
+  trade-off (struct-mode departures 100% -> 28%; nominal RMS@H 0.130 -> 0.254, nominal failures 0% -> 10%).

@@ -216,7 +216,9 @@ def main():
             r = te["summary"].get(f"task_curriculum|{cond}")
             if r:
                 put(f"RTcur{c}Rmsh", r["rms_h"][0]); put(f"RTcur{c}RmshLo", r["rms_h"][1]); put(f"RTcur{c}RmshHi", r["rms_h"][2])
-                put(f"RTcur{c}Fail", 100 * r.get("failure", float("nan")), "{:.0f}"); put("RTcurNSeeds", len(r["seed_means"]), "{:d}")
+                put(f"RTcur{c}Fail", 100 * r.get("failure", float("nan")), "{:.1f}"); put("RTcurNSeeds", len(r["seed_means"]), "{:d}")
+                tc = te["tests"].get(f"task_curriculum_vs_curriculum|{cond}")
+                if tc: put(f"RTcurImpCurr{c}", 100 * (1 - tc["mean_a"] / tc["mean_b"]), "{:.0f}")
             for o, t in (("baseline", "Base"), ("curriculum", "Curr")):
                 tt = te["tests"].get(f"task_curriculum_vs_{o}|{cond}")
                 if tt: put(f"RPTcurVs{t}{c}", tt["p_mannwhitney"], "{:.3f}")
