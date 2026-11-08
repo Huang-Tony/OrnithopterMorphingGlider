@@ -19,6 +19,7 @@ import os
 import numpy as np
 from scipy.optimize import least_squares
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 import common  # noqa: F401
 from common import RUNS_DIR, dump_json
 import figstyle
@@ -195,35 +196,53 @@ def main():
     out["representative_frames"] = rep
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "planb_fold_validation.json"))
 
-    # ---- figure ----
-    fig, axs = plt.subplots(1, 3, figsize=(figstyle.DOUBLE, 2.2))
-    ax = axs[0]; ex = sorted(fits, key=lambda f: f["speed_deg_s"])
+    # ---- figure (revision R1: photo of the rig + data, at the journal text width, 7 pt lettering) ----
+    from PIL import Image, ImageOps
+    plt.rcParams.update({"font.size": 7, "axes.labelsize": 7, "xtick.labelsize": 6.5, "ytick.labelsize": 6.5,
+                         "legend.fontsize": 6.3})
+    fig = plt.figure(figsize=(figstyle.TEXT, 4.3))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.22], height_ratios=[1, 1], wspace=0.3, hspace=0.42,
+                          left=0.02, right=0.985, top=0.96, bottom=0.09)
+    ax = fig.add_subplot(gs[0, 0])
+    ph = ImageOps.exif_transpose(Image.open(os.path.join(HERE, "data", "fold_rig_photo_IMG4612.jpg")))
+    W, H = ph.size; ph = ph.crop((int(0.095 * W), int(0.175 * H), int(0.952 * W), int(0.75 * H)))
+    ax.imshow(ph); ax.set_axis_off(); w, h = ph.size
+    for (fx, fy), (tx, ty), lab in (((0.52, 0.525), (0.27, 0.30), "fold joint"), ((0.29, 0.616), (0.15, 0.88), "markers"),
+                                    ((0.69, 0.118), (0.86, 0.26), "servo"), ((0.71, 0.616), (0.84, 0.88), "electronics")):
+        ax.annotate(lab, xy=(fx * w, fy * h), xytext=(tx * w, ty * h), fontsize=6.3, color="white", fontweight="bold",
+                    ha="center", va="center", arrowprops=dict(arrowstyle="-", color="white", lw=0.7),
+                    bbox=dict(boxstyle="round,pad=0.2", fc="#1a1a1a", ec="none", alpha=0.75))
+    ax.text(-0.02, 1.0, "a", transform=ax.transAxes, fontsize=8, fontweight="bold", va="bottom")
+    ax = fig.add_subplot(gs[0, 1]); ex = sorted(fits, key=lambda f: f["speed_deg_s"])
     pick = [ex[len(ex) // 2], ex[-1]] if len(ex) > 1 else ex
     for f, col in zip(pick, (figstyle.SLOT["blue"], figstyle.SLOT["orange"])):
-        ax.plot(np.array(f["_t"]) * 1000, f["_qn"], "o", ms=1.8, mfc="white", mec=col, mew=0.5)
+        ax.plot(np.array(f["_t"]) * 1000, f["_qn"], "o", ms=2.0, mfc="white", mec=col, mew=0.5)
         ax.plot(np.array(f["_t"]) * 1000, f["_fit1"], "-", color=col, lw=0.9,
                 label=f"{f['speed_deg_s']:.0f}°/s: τ = {1000*f['tau_s']:.0f} ms")
         ax.plot(np.array(f["_t"]) * 1000, f["_sim07"], ":", color=col, lw=0.9)
-    ax.set_xlabel("time from command onset (ms)"); ax.set_ylabel("normalised fold $q_n$")
-    ax.legend(loc="lower right", fontsize=5.6); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "a")
-    ax.text(250, 0.25, "dotted: simulator\nlag, τ = 70 ms", fontsize=5.6, color=figstyle.INK2)
-    ax = axs[1]
+    ax.set_xlabel("time from command onset (ms)"); ax.set_ylabel("normalized fold $q_n$")
+    ax.legend(loc="lower right", frameon=False); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "b", x=-0.2)
+    ax.text(-85, 1.42, "dotted: simulator lag, τ = 70 ms", fontsize=6.3, color=figstyle.INK2, va="top")
+    ax = fig.add_subplot(gs[1, 0])
     sp = np.array([f["speed_deg_s"] for f in fits])
     ax.plot(sp, 1000 * taus, "o", ms=2.6, mfc="white", mec=figstyle.SLOT["blue"], mew=0.7, label="first-order fit")
     ax.axhline(70, color=figstyle.INK, lw=0.7, ls="--", label="simulator τ")
-    ax.set_xscale("log"); ax.set_xlabel("commanded speed (°/s)"); ax.set_ylabel("τ (ms)"); ax.legend(fontsize=5.6)
-    figstyle.panel_label(ax, "b")
-    ax = axs[2]
+    ax.set_xscale("log"); ax.set_xlabel("commanded speed (°/s)"); ax.set_ylabel("τ (ms)")
+    from matplotlib.ticker import FixedLocator, NullLocator, FixedFormatter
+    tk = sorted({int(round(v)) for v in sp}); ax.xaxis.set_major_locator(FixedLocator(tk))
+    ax.xaxis.set_major_formatter(FixedFormatter([str(v) for v in tk])); ax.xaxis.set_minor_locator(NullLocator())
+    ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=2, borderaxespad=0.1)
+    figstyle.panel_label(ax, "c", x=-0.2, y=1.1)
+    ax = fig.add_subplot(gs[1, 1])
     for tag, col in (("rest", figstyle.SLOT["blue"]), ("max_fold", figstyle.SLOT["orange"])):
         d = rep[tag]; P = np.array(d["pts"]); C = np.array(d["cubic"]); S = np.array(d["solver"])
-        ax.plot(P[:, 1], -P[:, 0], "o", ms=2.4, mfc="white", mec=col, mew=0.6)
-        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=0.9, label=f"{'rest' if tag=='rest' else 'full fold'}: cubic fit")
+        ax.plot(P[:, 1], -P[:, 0], "o", ms=2.2, mfc="white", mec=col, mew=0.6)
+        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=0.9, label=f"{'rest' if tag=='rest' else 'full fold'}: cubic")
         ax.plot(S[:, 1], -S[:, 0], ":", color=col, lw=0.9)
     ax.set_xlabel("outboard y (mm)"); ax.set_ylabel("forward −x (mm)"); ax.set_aspect("equal", adjustable="datalim")
-    ax.legend(fontsize=5.6, loc="lower left"); figstyle.panel_label(ax, "c")
-    ax.text(0.98, 0.95, "dotted: energy-solver\nprediction from tip only", transform=ax.transAxes, ha="right", va="top",
-            fontsize=5.6, color=figstyle.INK2)
-    fig.tight_layout(); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_planb_fold"))
+    ax.legend(frameon=False, loc="lower left"); figstyle.panel_label(ax, "d", x=-0.2)
+    ax.text(0.98, 0.98, "dotted: solver", transform=ax.transAxes, ha="right", va="top", fontsize=6.3, color=figstyle.INK2)
+    figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_planb_fold"))
     a = out["actuator"]; s = out["spar_shape"]
     print("tau clusters:", a["tau_clusters"])
     print(f"actuator: n={a['n_steps']} tau median {1000*a['tau_median_s']:.0f} ms IQR {[round(1000*x) for x in a['tau_iqr_s']]} delay {1000*a['delay_median_s']:.0f} ms; "

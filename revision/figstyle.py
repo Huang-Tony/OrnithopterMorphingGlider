@@ -16,6 +16,7 @@ MM = 1 / 25.4
 SINGLE = 89 * MM          # Nature single column
 ONEHALF = 120 * MM
 DOUBLE = 183 * MM         # Nature double column
+TEXT = 131 * MM           # text width of the journal template (sn-jnl, 372 pt)
 
 SLOT = {"blue": "#2a78d6", "orange": "#eb6834", "aqua": "#1baf7a", "yellow": "#eda100",
         "magenta": "#e87ba4", "green": "#008300", "violet": "#6250d6", "red": "#e34948"}
