@@ -228,6 +228,14 @@ def main():
                 if r:
                     put(f"Pilot{tag}{c}Rmsh", r["rms_yaw_horizon"]); put(f"Pilot{tag}{c}Fail", 100 * r["failure"], "{:.0f}")
                     put(f"Pilot{tag}{c}Hf", 100 * r["hf_action_power_frac_2Hz"], "{:.0f}")
+    kr = J("kan_readout.json")
+    if kr:
+        put("KanGain", kr.get("student_gain_m_per_rad_s"), "{:.2f}"); put("KanTeacherGain", kr.get("teacher_gain_m_per_rad_s"), "{:.2f}")
+        put("KanReadDev", kr.get("mean_abs_student_teacher_diff_sweep_m"), "{:.2f}")
+        put("KanTipStraight", kr["student"]["tip_raise"]["0.0"], "{:.3f}")
+        put("KanTipTurn", 0.5 * (kr["student"]["tip_raise"]["0.6"] + kr["student"]["tip_raise"]["-0.6"]), "{:.3f}")
+        put("KanTipDelta", kr.get("student_tip_raise_turn_minus_straight_m"), "{:.3f}")
+        put("KanTeacherTipDelta", kr.get("teacher_tip_raise_turn_minus_straight_m"), "{:.3f}")
     cf = J("command_filter.json")
     if cf:
         put("FiltAlpha", cf["selected_alpha"], "{:.2f}"); put("FiltCutHz", cf["selected_cutoff_hz"], "{:.1f}")
