@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Plan B validation with the author's own hardware data (companion ornithopter study, fold-actuation test:
-servo-driven compliant fold joint, right wing, Vicon at 100 Hz, ~/Desktop/ORNITHOPTER DATA, read-only).
+"""Plan B validation with the author's own hardware data (actuation test of a servo-driven compliant wing from the
+companion flapping-wing study; right wing, motion capture at 100 Hz; raw data not public, read-only). The design of
+the test article is the subject of the companion study and is deliberately not described here.
 
 1. Actuator dynamics: for every commanded step on the steep part of the static map, fit (a) a first-order
-   lag with dead time, tau*dq/dt + q = u(t - d), and (b) a second-order model, to the normalised fold
-   response; compare with the simulator's first-order actuator, tau = 0.07 s.
+   lag with dead time, tau*dq/dt + q = u(t - d), and (b) a second-order model, to the normalised
+   displacement response; compare with the simulator's first-order actuator, tau = 0.07 s.
 2. Spar-shape model: fit straight line / quadratic / cubic Bezier curves (fixed end points) to the 15
    leading-edge spar markers in every frame, and test whether the simulator's energy solver, given only
    the measured root and tip, predicts the interior shape.
-Outputs: revision_runs/analysis/planb_fold_validation.json, paper figure fig_planb_fold.{pdf,png}.
+Outputs: revision_runs/analysis/planb_fold_validation.json, paper figure fig_hw_validation.{pdf,png}.
 """
 
 import csv
@@ -145,7 +146,7 @@ def main():
                                        "fast_range_s": [float(fast.min()), float(fast.max())] if fast.size else None,
                                        "slow_n": int(slow.size), "slow_median_s": float(np.median(slow)) if slow.size else None,
                                        "slow_range_s": [float(slow.min()), float(slow.max())] if slow.size else None,
-                                       "note": "fast = servo-dominated steps, slow = viscoelastic creep of the compliant joint"}
+                                       "note": "fast = servo-dominated steps, slow = viscoelastic creep of the compliant structure"}
     try:
         ring = read_csv("servo_ringing.csv")
         fn = [float(r["f_hz"]) for r in ring if r["signal"].startswith("mode 2")]
@@ -182,7 +183,7 @@ def main():
                          **{f"{k}_median": float(np.nanmedian(R[k])) for k in ("rms_line_mm", "rms_quad_mm", "rms_cubic_mm", "rms_solver_mm")},
                          **{f"{k}_p95": float(np.nanpercentile(R[k], 95)) for k in ("rms_line_mm", "rms_quad_mm", "rms_cubic_mm", "rms_solver_mm")},
                          "q_range": [float(np.nanmin(R["q"])), float(np.nanmax(R["q"]))]}
-    # representative frames: rest and maximum fold
+    # representative frames: rest and maximum deflection
     iq = np.nanargmax(R["q"]); i0 = int(np.nanargmin(np.abs(R["q"])))
     rep = {}
     for tag, i in (("rest", i0), ("max_fold", iq)):
@@ -196,23 +197,27 @@ def main():
     out["representative_frames"] = rep
     dump_json(out, os.path.join(RUNS_DIR, "analysis", "planb_fold_validation.json"))
 
-    # ---- figure (revision R1: photo of the rig + data, at the journal text width, 7 pt lettering) ----
-    from PIL import Image, ImageOps
+    # ---- figure (revision R1: photo of the rig + data, journal text width, 7 pt lettering) ----
+    # The photo (revision/data/rig_photo_masked.jpg) is a cropped, downscaled copy of the author's photo IMG_4610
+    # without metadata, in which the joint is masked in the pixels: its design belongs to the companion study.
+    from PIL import Image
     plt.rcParams.update({"font.size": 7, "axes.labelsize": 7, "xtick.labelsize": 6.5, "ytick.labelsize": 6.5,
                          "legend.fontsize": 6.3})
-    fig = plt.figure(figsize=(figstyle.TEXT, 4.3))
-    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.22], height_ratios=[1, 1], wspace=0.3, hspace=0.42,
-                          left=0.02, right=0.985, top=0.96, bottom=0.09)
-    ax = fig.add_subplot(gs[0, 0])
-    ph = ImageOps.exif_transpose(Image.open(os.path.join(HERE, "data", "fold_rig_photo_IMG4612.jpg")))
-    W, H = ph.size; ph = ph.crop((int(0.095 * W), int(0.175 * H), int(0.952 * W), int(0.75 * H)))
-    ax.imshow(ph); ax.set_axis_off(); w, h = ph.size
-    for (fx, fy), (tx, ty), lab in (((0.52, 0.525), (0.27, 0.30), "fold joint"), ((0.29, 0.616), (0.15, 0.88), "markers"),
-                                    ((0.69, 0.118), (0.86, 0.26), "servo"), ((0.71, 0.616), (0.84, 0.88), "electronics")):
-        ax.annotate(lab, xy=(fx * w, fy * h), xytext=(tx * w, ty * h), fontsize=6.3, color="white", fontweight="bold",
-                    ha="center", va="center", arrowprops=dict(arrowstyle="-", color="white", lw=0.7),
-                    bbox=dict(boxstyle="round,pad=0.2", fc="#1a1a1a", ec="none", alpha=0.75))
-    ax.text(-0.02, 1.0, "a", transform=ax.transAxes, fontsize=8, fontweight="bold", va="bottom")
+    fig = plt.figure(figsize=(figstyle.TEXT, 4.5))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1.15, 1], height_ratios=[1.25, 1], wspace=0.33, hspace=0.5,
+                          left=0.02, right=0.985, top=0.94, bottom=0.085)
+    ax = fig.add_subplot(gs[0, 0]); ph = Image.open(os.path.join(HERE, "data", "rig_photo_masked.jpg"))
+    ax.imshow(ph); ax.set_axis_off(); ax.set_anchor("N")
+    import matplotlib.patheffects as pe
+    halo = [pe.withStroke(linewidth=1.6, foreground="white")]
+    arr = dict(arrowstyle="-", color=figstyle.INK, lw=0.5, shrinkA=1, shrinkB=0)
+    for xy, txy, lab, ha in (((1890, 32), (1500, 230), "motion-capture cameras", "center"),
+                             ((690, 590), (330, 1000), "joint (masked)", "center"),
+                             ((1100, 700), (1150, 1080), "markers", "center"), ((1560, 545), (1960, 760), "servo", "center")):
+        t = ax.annotate(lab, xy=xy, xytext=txy, fontsize=6.3, color=figstyle.INK, ha=ha, va="center", arrowprops=arr)
+        t.set_path_effects(halo)
+    ax.annotate("", xy=(216, 450), xytext=(1500, 230), arrowprops=arr)
+    ax.text(-0.02, 1.02, "a", transform=ax.transAxes, fontsize=8, fontweight="bold", va="bottom")
     ax = fig.add_subplot(gs[0, 1]); ex = sorted(fits, key=lambda f: f["speed_deg_s"])
     pick = [ex[len(ex) // 2], ex[-1]] if len(ex) > 1 else ex
     for f, col in zip(pick, (figstyle.SLOT["blue"], figstyle.SLOT["orange"])):
@@ -220,16 +225,16 @@ def main():
         ax.plot(np.array(f["_t"]) * 1000, f["_fit1"], "-", color=col, lw=0.9,
                 label=f"{f['speed_deg_s']:.0f}°/s: τ = {1000*f['tau_s']:.0f} ms")
         ax.plot(np.array(f["_t"]) * 1000, f["_sim07"], ":", color=col, lw=0.9)
-    ax.set_xlabel("time from command onset (ms)"); ax.set_ylabel("normalized fold $q_n$")
-    ax.legend(loc="lower right", frameon=False); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "b", x=-0.2)
-    ax.text(-85, 1.42, "dotted: simulator lag, τ = 70 ms", fontsize=6.3, color=figstyle.INK2, va="top")
+    ax.set_xlabel("time from command onset (ms)"); ax.set_ylabel("normalized displacement $q_n$")
+    ax.legend(loc="lower right", frameon=False); ax.set_xlim(-100, 600); figstyle.panel_label(ax, "b", x=-0.22, y=1.1)
+    ax.text(0.0, 1.03, "dotted: simulator lag, τ = 70 ms", transform=ax.transAxes, fontsize=6.3, color=figstyle.INK2, va="bottom")
     ax = fig.add_subplot(gs[1, 0])
     sp = np.array([f["speed_deg_s"] for f in fits])
     ax.plot(sp, 1000 * taus, "o", ms=2.6, mfc="white", mec=figstyle.SLOT["blue"], mew=0.7, label="first-order fit")
     ax.axhline(70, color=figstyle.INK, lw=0.7, ls="--", label="simulator τ")
     ax.set_xscale("log"); ax.set_xlabel("commanded speed (°/s)"); ax.set_ylabel("τ (ms)")
     from matplotlib.ticker import FixedLocator, NullLocator, FixedFormatter
-    tk = sorted({int(round(v)) for v in sp}); ax.xaxis.set_major_locator(FixedLocator(tk))
+    tk = [v for v in sorted({int(round(v)) for v in sp}) if v != 200]; ax.xaxis.set_major_locator(FixedLocator(tk))
     ax.xaxis.set_major_formatter(FixedFormatter([str(v) for v in tk])); ax.xaxis.set_minor_locator(NullLocator())
     ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=2, borderaxespad=0.1)
     figstyle.panel_label(ax, "c", x=-0.2, y=1.1)
@@ -237,12 +242,12 @@ def main():
     for tag, col in (("rest", figstyle.SLOT["blue"]), ("max_fold", figstyle.SLOT["orange"])):
         d = rep[tag]; P = np.array(d["pts"]); C = np.array(d["cubic"]); S = np.array(d["solver"])
         ax.plot(P[:, 1], -P[:, 0], "o", ms=2.2, mfc="white", mec=col, mew=0.6)
-        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=0.9, label=f"{'rest' if tag=='rest' else 'full fold'}: cubic")
+        ax.plot(C[:, 1], -C[:, 0], "-", color=col, lw=0.9, label=f"{'rest' if tag == 'rest' else 'full deflection'}: cubic")
         ax.plot(S[:, 1], -S[:, 0], ":", color=col, lw=0.9)
     ax.set_xlabel("outboard y (mm)"); ax.set_ylabel("forward −x (mm)"); ax.set_aspect("equal", adjustable="datalim")
-    ax.legend(frameon=False, loc="lower left"); figstyle.panel_label(ax, "d", x=-0.2)
+    ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0.0, 1.0), borderaxespad=0.1, ncol=2); figstyle.panel_label(ax, "d", x=-0.22, y=1.1)
     ax.text(0.98, 0.98, "dotted: solver", transform=ax.transAxes, ha="right", va="top", fontsize=6.3, color=figstyle.INK2)
-    figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_planb_fold"))
+    figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_hw_validation"))
     a = out["actuator"]; s = out["spar_shape"]
     print("tau clusters:", a["tau_clusters"])
     print(f"actuator: n={a['n_steps']} tau median {1000*a['tau_median_s']:.0f} ms IQR {[round(1000*x) for x in a['tau_iqr_s']]} delay {1000*a['delay_median_s']:.0f} ms; "

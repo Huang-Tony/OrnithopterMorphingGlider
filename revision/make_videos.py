@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from glider_mesh import wing_grid, fuselage_grid, bezier, euler_to_R  # noqa: E402
 
 RUNS = os.environ.get("REVISION_RUNS_DIR", os.path.join(os.path.dirname(HERE), "revision_runs"))
-DATA = os.path.join(RUNS, "videos", "data"); OUT = os.path.join(RUNS, "videos")
+DATA = os.path.join(RUNS, "videos", "data"); OUT = os.environ.get("VIDEO_OUT", os.path.join(RUNS, "videos"))
 DT = 0.04
 SKIN = "#a9bccf"; SKIN_EDGE = "#5d6b79"; SPAR = "#1f5fae"; FUS = "#b9bec5"
 C_REF = "#4d4d4d"; C_A = "#2a78d6"; C_B = "#d9542b"; C_C = "#1b9e77"
@@ -72,13 +72,35 @@ def add_glider(p, ep, t, pv):
     return R, x0
 
 
-def render_view(ep, t, size, pv, label=None):
+ARC_T = 2.0          # [s] the yaw arcs show the heading change over this horizon at the given yaw rate
+
+
+def add_yaw_arc(p, pv, x0, psi, rate, radius, color, tube_r=0.016, opacity=1.0):
+    """Horizontal arc around the glider from the current heading psi to psi + rate * ARC_T, with an arrowhead.
+    Positive yaw rate (z up) turns the nose to the left (counter-clockwise seen from above). A rate below
+    0.02 rad/s is drawn as a short straight arrow ahead of the nose ('hold heading')."""
+    sweep = float(rate) * ARC_T
+    if abs(sweep) < 0.04:
+        a = x0 + (radius - 0.25) * np.array([np.cos(psi), np.sin(psi), 0.0])
+        b = x0 + (radius + 0.05) * np.array([np.cos(psi), np.sin(psi), 0.0])
+        p.add_mesh(pv.Line(a, b).tube(radius=tube_r), color=color, opacity=opacity, smooth_shading=True)
+        tang = np.array([np.cos(psi), np.sin(psi), 0.0]); tip = b
+    else:
+        th = np.linspace(psi, psi + sweep, 48)
+        pts = x0 + radius * np.stack([np.cos(th), np.sin(th), np.zeros_like(th)], axis=1)
+        p.add_mesh(pv.Spline(pts, 96).tube(radius=tube_r), color=color, opacity=opacity, smooth_shading=True)
+        tang = np.sign(sweep) * np.array([-np.sin(th[-1]), np.cos(th[-1]), 0.0]); tip = pts[-1]
+    p.add_mesh(pv.Cone(center=tip + 0.06 * tang, direction=tang, height=0.14, radius=0.055, resolution=24),
+               color=color, opacity=opacity, smooth_shading=True)
+
+
+def render_view(ep, t, size, pv, label=None, color=C_A):
     p = pv.Plotter(off_screen=True, window_size=size, lighting="three lights")
     p.set_background("#f4f6f9", top="#dfe6ee")
     R, x0 = add_glider(p, ep, t, pv)
-    trail = ep["pos"][max(0, t - 50): t + 1] - ep["pos"][0]          # last 2 s of the flight path
-    if len(trail) > 3:
-        p.add_mesh(pv.Spline(trail, 3 * len(trail)), color="#b3bcc6", line_width=1.2, opacity=0.7)
+    psi = float(ep["yaw"][t])
+    add_yaw_arc(p, pv, x0, psi, ep["yaw_ref"][t], 1.30, C_REF, opacity=0.85)          # commanded
+    add_yaw_arc(p, pv, x0, psi, ep["yaw_rate"][t], 1.50, color)                        # actual
     # ground reference grid 12 m below the glider (moves with it in discrete 2 m cells, so motion is visible)
     gz = x0[2] - 12.0; cx, cy = np.floor(x0[0] / 2) * 2, np.floor(x0[1] / 2) * 2
     plane = pv.Plane(center=(cx, cy, gz), direction=(0, 0, 1), i_size=60, j_size=60, i_resolution=30, j_resolution=30)
@@ -92,7 +114,7 @@ def render_view(ep, t, size, pv, label=None):
     return img
 
 
-def make_video(name, panels, fps=25, quick=False, title=""):
+def make_video(name, panels, fps=25, quick=False, title="", t0=0):
     """panels: list of (label, episode, colour)."""
     import pyvista as pv
     import matplotlib
@@ -102,7 +124,7 @@ def make_video(name, panels, fps=25, quick=False, title=""):
                          "xtick.major.width": 0.6, "ytick.major.width": 0.6})
     pv.OFF_SCREEN = True
     T = max(len(ep["yaw_rate"]) for _, ep, _ in panels)
-    if quick: T = min(T, 12)
+    if quick: T = min(T, t0 + 12)
     n = len(panels); W, H = 1920, 1080
     ncol = 1 if n <= 2 else 2; nrow = int(np.ceil(n / ncol))
     view_w = 1150
@@ -136,23 +158,53 @@ def make_video(name, panels, fps=25, quick=False, title=""):
     cursors = [a.axvline(0, color="#999999", lw=0.8) for a in (ax_r, ax_a, ax_u)]
     fig.suptitle(title, x=0.01, ha="left", fontsize=15, fontweight="bold")
     stamp = fig.text(0.985, 0.965, "", ha="right", fontsize=12)
-    ims = [None] * n; labs = []
+    ims = [None] * n; labs = []; gauges = []
+    fs = 11 if n < 3 else 8
+    from matplotlib.lines import Line2D
     for k, (lab, ep, col) in enumerate(panels):
         from matplotlib.patches import Rectangle
         vax[k].add_patch(Rectangle((0.012, 0.915), 0.014, 0.06, transform=vax[k].transAxes, color=col, zorder=5))
         labs.append(vax[k].text(0.034, 0.97, "", transform=vax[k].transAxes, va="top", fontsize=12 if n < 5 else 10,
                                 color="#1a1a1a", fontweight="bold", zorder=6))
-    for t in range(T):
+        # turn-rate gauge (left turn drawn on the left: x = -r), commanded vs actual yaw rate
+        g = vax[k].inset_axes([0.03, 0.05, 0.36, 0.12]); g.set_xlim(-0.95, 0.95); g.set_ylim(-1.2, 1.2)
+        g.patch.set_alpha(0.0)
+        for sp in g.spines.values(): sp.set_visible(False)
+        g.set_yticks([]); g.set_xticks([-0.6, -0.3, 0, 0.3, 0.6]); g.set_xticklabels(["0.6", "0.3", "0", "0.3", "0.6"], fontsize=fs - 2)
+        g.tick_params(axis="x", length=3, pad=1, colors="#4d4d4d")
+        g.axhline(0, xmin=0.03, xmax=0.97, color="#7a7a7a", lw=1.2)
+        g.text(-0.95, 0.55, "\u2190 left", fontsize=fs - 1, color="#4d4d4d", va="center", ha="left")
+        g.text(0.95, 0.55, "right \u2192", fontsize=fs - 1, color="#4d4d4d", va="center", ha="right")
+        mt, = g.plot([0], [0.45], marker="v", ms=fs + 1, color=C_REF, ls="none")
+        ma, = g.plot([0], [-0.45], marker="^", ms=fs + 1, color=col, ls="none")
+        g.legend([Line2D([], [], marker="v", ls="none", color=C_REF, ms=fs - 1), Line2D([], [], marker="^", ls="none", color=col, ms=fs - 1)],
+                 ["command", "actual"], loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=fs - 2,
+                 handletextpad=0.2, borderaxespad=0.0)
+        cmd = vax[k].text(0.03, 0.215, "", transform=vax[k].transAxes, fontsize=fs, color="#1a1a1a", va="bottom", zorder=6)
+        gauges.append((mt, ma, cmd))
+    fig.text(0.01, 0.040, "3-D view (chase camera). Red spheres: the wingtip points whose positions the controller commands. "
+             "Grid: ground, 12 m below.", fontsize=10, color="#4d4d4d", ha="left", va="bottom")
+    fig.text(0.01, 0.014, "Arcs: heading change over the next 2 s if the yaw rate stayed constant \u2014 dark grey at the commanded "
+             "rate, coloured at the actual rate.", fontsize=10, color="#4d4d4d", ha="left", va="bottom")
+    t_start = t0 if quick else 0
+    for t in range(t_start, T):
         for k, (lab, ep, col) in enumerate(panels):
             tt = min(t, len(ep["yaw_rate"]) - 1)
-            img = render_view(ep, tt, vsize, pv)
+            img = render_view(ep, tt, vsize, pv, color=col)
+            rr, r = float(ep["yaw_ref"][tt]), float(ep["yaw_rate"][tt])
+            mt, ma, cmd = gauges[k]
+            mt.set_xdata([-np.clip(rr, -0.92, 0.92)]); ma.set_xdata([-np.clip(r, -0.92, 0.92)])
+            side = lambda v: "left" if v > 0 else "right"
+            ctext = "hold heading" if abs(rr) < 0.02 else f"yaw {side(rr)} {abs(rr):.2f} rad/s"
+            atext = "0.00 rad/s" if abs(r) < 0.005 else f"{side(r)} {abs(r):.2f} rad/s"
+            cmd.set_text(f"Command: {ctext}     actual: {atext}")
             if ims[k] is None: ims[k] = vax[k].imshow(img)
             else: ims[k].set_data(img)
             status = "  — episode terminated" if (t >= len(ep["yaw_rate"]) - 1 and ep["failed"]) else ""
             labs[k].set_text(f"{lab}   RMS@H {ep['rms_h']:.3f} rad/s{status}")
         for cu in cursors: cu.set_xdata([t * DT, t * DT])
         stamp.set_text(f"t = {t * DT:4.2f} s   (simulation, real time)")
-        fig.savefig(os.path.join(tmp, f"f{t:04d}.png"), dpi=100)
+        fig.savefig(os.path.join(tmp, f"f{t - t_start:04d}.png"), dpi=100)
     plt.close(fig)
     out = os.path.join(OUT, f"{name}.mp4"); os.makedirs(OUT, exist_ok=True)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps), "-i", os.path.join(tmp, "f%04d.png"),
@@ -162,7 +214,7 @@ def make_video(name, panels, fps=25, quick=False, title=""):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--only", nargs="*"); ap.add_argument("--quick", action="store_true")
+    ap = argparse.ArgumentParser(); ap.add_argument("--only", nargs="*"); ap.add_argument("--quick", action="store_true"); ap.add_argument("--t0", type=int, default=0)
     a = ap.parse_args()
     info = json.load(open(os.path.join(DATA, "episode.json")))
     teacher = load("sac_teacher")
@@ -177,7 +229,7 @@ def main():
         jobs["S2"] = ("S2_sac_vs_classical", [(short, main_pol, C_A), (f"{name} (best tuned classical)", load(tag), C_B)],
                       f"S2  {short} vs best tuned classical controller, identical episode")
     if smooth is not None:
-        jobs["S5"] = ("S5_sac_vs_sac_smooth", [("SAC (1M steps)", teacher, "#8c8c8c"), ("SAC-S (+ smoothness fine-tuning)", smooth, C_A)],
+        jobs["S5"] = ("S5_sac_vs_sac_smooth", [("SAC (1M steps)", teacher, "#e08a1e"), ("SAC-S (+ smoothness fine-tuning)", smooth, C_A)],
                       "S5  SAC before vs after smoothness fine-tuning, identical episode")
     ck = sorted(glob.glob(os.path.join(DATA, "sac_seed7_*.npz")))
     if ck:
@@ -192,7 +244,7 @@ def main():
                       "S4  SAC teacher vs distilled KAN student, identical episode")
     for k, (name, panels, title) in jobs.items():
         if a.only and k not in a.only: continue
-        make_video(name, panels, quick=a.quick, title=title)
+        make_video(name, panels, quick=a.quick, title=title, t0=a.t0)
 
 
 if __name__ == "__main__":
