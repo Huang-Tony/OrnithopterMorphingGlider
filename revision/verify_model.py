@@ -120,19 +120,19 @@ def authority_figure(yaw_damping):
         mz.append((aero.calculate_forces(R, v_rel_body=v, omega_body=np.zeros(3), phys=phys)[1] + aero.calculate_forces(L, v_rel_body=v, omega_body=np.zeros(3), phys=phys)[1])[2] - M0[2])
     mz = np.array(mz)
     figstyle.apply()
-    fig, axs = plt.subplots(1, 2, figsize=(figstyle.DOUBLE * 0.78, 2.1), gridspec_kw=dict(width_ratios=[1.15, 1]))
+    fig, axs = plt.subplots(1, 2, figsize=(figstyle.DOUBLE, 2.4), gridspec_kw=dict(width_ratios=[1.15, 1]))
     ax = axs[0]
     im = ax.pcolormesh(xs, zs, G, shading="gouraud", cmap="Blues", vmin=0)
     cb = fig.colorbar(im, ax=ax, pad=0.02, fraction=0.06); cb.set_label(r"$\Delta M_z$ (N m)"); cb.outline.set_linewidth(0.4)
     cs = ax.contour(xs, zs, G, levels=[0.01, 0.02, 0.03, 0.04, 0.05], colors="white", linewidths=0.4)
-    ax.clabel(cs, fmt="%.2f", fontsize=5)
+    ax.clabel(cs, fmt="%.2f", fontsize=6)
     ax.set_xlabel(r"tip sweep $\Delta x$ (m)"); ax.set_ylabel(r"tip dihedral $\Delta z$ (m)"); figstyle.panel_label(ax, "a", x=-0.2)
     ax = axs[1]
     ax.plot(ds, mz, color=figstyle.SLOT["blue"], lw=1.0)
     ax.axhline(mz.max(), color=figstyle.MUTED, lw=0.6, ls="--")
     ax.set_xlabel(r"differential sweep amplitude $\delta$ (m)"); ax.set_ylabel(r"$\Delta M_z$ (N m)")
     # airframe v3: no steady-yaw-rate axis (with weak yaw damping the response is governed by sideslip and bank)
-    ax.text(0.02, mz.max() * 1.03, f"saturation {mz.max():.3f} N m", fontsize=5.6, color=figstyle.INK2, va="bottom")
+    ax.text(0.02, mz.max() * 1.03, f"saturation {mz.max():.3f} N m", fontsize=6.3, color=figstyle.INK2, va="bottom")
     ax.set_ylim(0, mz.max() * 1.18); figstyle.panel_label(ax, "b", x=-0.22)
     fig.tight_layout(w_pad=2.5); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_authority"))
     return {"single_wing_max": float(G.max()), "diff_sweep_max": float(mz.max())}

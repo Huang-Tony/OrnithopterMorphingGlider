@@ -32,8 +32,11 @@ def slope(p, v):
 def main():
     figstyle.apply()
     d = json.load(open(os.path.join(A, "interpretability.json")))
-    fig = plt.figure(figsize=(figstyle.DOUBLE, 2.25))
-    gs = fig.add_gridspec(1, 5, width_ratios=[1.35, 1.0, 0.8, 0.8, 0.8], wspace=0.62, left=0.075, right=0.99, bottom=0.27, top=0.9)
+    fig = plt.figure(figsize=(figstyle.DOUBLE, 4.4))
+    outer = fig.add_gridspec(2, 1, height_ratios=[1.15, 1], hspace=0.62, left=0.1, right=0.985, bottom=0.08, top=0.95)
+    top = outer[0].subgridspec(1, 2, width_ratios=[1.5, 1], wspace=0.75)
+    bot = outer[1].subgridspec(1, 3, wspace=0.6)
+    gs = [top[0], top[1], bot[0], bot[1], bot[2]]
 
     # a: slope of each virtual input on r_ref (m per rad/s), per seed dots + mean bar
     ax = fig.add_subplot(gs[0]); x = np.arange(len(VIRT)); w = 0.36
@@ -50,16 +53,16 @@ def main():
     ax.axvline(2.5, color=figstyle.LIGHT, lw=0.5)
     ax.text(1.0, 1.01, r"vs $r_\mathrm{ref}$", transform=ax.get_xaxis_transform(), ha="center", va="bottom", fontsize=5, color=figstyle.MUTED)
     ax.text(4.0, 1.01, r"vs $|r_\mathrm{ref}|$", transform=ax.get_xaxis_transform(), ha="center", va="bottom", fontsize=5, color=figstyle.MUTED)
-    ax.legend(frameon=False, loc="upper right", handlelength=1.0)
-    figstyle.panel_label(ax, "a", x=-0.3)
+    ax.legend(frameon=False, loc="upper right", handlelength=1.0, fontsize=6.3)
+    figstyle.panel_label(ax, "a", x=-0.22, y=1.06)
 
     # b: normalized sensitivity per observation group (teacher)
     ax = fig.add_subplot(gs[1]); g = d["sensitivity"]["groups"]
     vals = [g.get(k, 0.0) for k in GROUPS]
     ax.barh(np.arange(len(GROUPS)), vals, color=figstyle.ENTITY["baseline"], height=0.6, lw=0)
     ax.set_yticks(np.arange(len(GROUPS))); ax.set_yticklabels(GROUPS); ax.invert_yaxis()
-    ax.set_xlabel("sensitivity (per obs., normalized)")
-    figstyle.panel_label(ax, "b", x=-0.62)
+    ax.set_xlabel("normalized sensitivity")
+    figstyle.panel_label(ax, "b", x=-0.75, y=1.06)
 
     # c: latent PCA explained variance + correlations of PC1/PC2
     ax = fig.add_subplot(gs[2]); ev = d["latent"]["explained_variance"]
@@ -68,16 +71,17 @@ def main():
     ax.set_xticks(np.arange(1, len(ev) + 1))
     txt = "\n".join(f"PC{k[2]} vs {v}: {d['latent'][k][v]:+.2f}" for k in ("pc1_corr", "pc2_corr")
                     for v in ("yaw_ref", "roll"))
+    ax.set_ylim(0, 100 * max(ev) * 1.9)
     ax.text(0.98, 0.98, txt.replace("yaw_ref", r"$r_\mathrm{ref}$").replace("roll", r"$\phi$"), transform=ax.transAxes,
-            ha="right", va="top", fontsize=5, color=figstyle.INK2)
-    figstyle.panel_label(ax, "c", x=-0.42)
+            ha="right", va="top", fontsize=5.8, color=figstyle.INK2)
+    figstyle.panel_label(ax, "c", x=-0.42, y=1.06)
 
     # d: imitation loss over the DAgger iterations
     ax = fig.add_subplot(gs[3]); h = d["kan"]["history"]
     it = np.array(h["iteration"]) + 1
     ax.plot(it, h["loss"], "o-", ms=2.2, lw=0.8, color=figstyle.ENTITY["KAN"])
     ax.set_xlabel("DAgger iteration"); ax.set_ylabel("imitation loss (MSE)")
-    figstyle.panel_label(ax, "d", x=-0.5)
+    figstyle.panel_label(ax, "d", x=-0.45, y=1.06)
 
     # e: final evaluation (50 episodes) teacher vs KAN student
     ax = fig.add_subplot(gs[4]); ev_dir = os.path.join(RUNS_DIR, "eval_final")
@@ -87,11 +91,11 @@ def main():
     xx = np.arange(2)
     ax.bar(xx - 0.19, tch, 0.36, color=figstyle.ENTITY["baseline"], lw=0, label="SAC teacher")
     ax.bar(xx + 0.19, stu, 0.36, color=figstyle.ENTITY["KAN"], lw=0, label="KAN student")
-    ax.set_xticks(xx); ax.set_xticklabels(["nominal", "random."]); ax.set_ylabel("RMS@H (rad/s)")
+    ax.set_xticks(xx); ax.set_xticklabels(["nominal", "randomized"]); ax.set_ylabel("RMS@H (rad/s)")
     k = d["kan"]
-    ax.legend(frameon=False, loc="upper left", fontsize=5, handlelength=1.0)
+    ax.legend(frameon=False, loc="upper left", fontsize=6, handlelength=1.0)
     ax.set_ylim(0, max(tch + stu) * 1.6)
-    figstyle.panel_label(ax, "e", x=-0.5)
+    figstyle.panel_label(ax, "e", x=-0.45, y=1.06)
     figstyle.save(fig, FIG)
     print("->", FIG)
 

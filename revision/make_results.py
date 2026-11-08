@@ -169,8 +169,8 @@ def fig_performance(S):
         ax.set_xlabel(xl); ax.set_xlim(left=0)
         ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
     axs[0].set_yticks(y); axs[0].set_yticklabels([label(n) for n in names])
-    axs[2].plot([], [], "o", ms=3.2, color=figstyle.INK, label="nominal"); axs[2].plot([], [], "o", ms=3.2, mfc="white", mec=figstyle.INK, label="randomized")
-    axs[2].legend(loc="lower right")
+    axs[1].plot([], [], "o", ms=3.2, color=figstyle.INK, label="nominal"); axs[1].plot([], [], "o", ms=3.2, mfc="white", mec=figstyle.INK, label="randomized")
+    axs[1].legend(loc="lower right")
     for ax, l in zip(axs, "abc"): figstyle.panel_label(ax, l, x=-0.05 if l != "a" else -0.42)
     fig.tight_layout(w_pad=1.0); figstyle.save(fig, os.path.join(FIG, "fig_performance"))
 
@@ -277,7 +277,7 @@ def fig_robustness(rows, cls):
     if not rows: return
     names = ["SAC"] + cls; cols = [color("baseline")] + [figstyle.CLASSICAL_GREYS[i] for i in (0, 3)][:len(cls)]
     labs = [label("baseline")] + [label(c) for c in cls]
-    fig = plt.figure(figsize=(figstyle.DOUBLE, 3.6)); gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 0.7, 1.0], hspace=0.55, wspace=0.35)
+    fig = plt.figure(figsize=(figstyle.DOUBLE, 3.6)); gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 0.7, 1.0], hspace=0.55, wspace=0.55)
     axr = fig.add_subplot(gs[:, 0]); axf = fig.add_subplot(gs[:, 1], sharey=axr)
     axe = fig.add_subplot(gs[0, 2]); axe2 = fig.add_subplot(gs[1, 2], sharex=axe)
     conds = [(c, l) for c, l in ROBUST_LABELS if ("SAC", c) in rows]; y = np.arange(len(conds))[::-1]
@@ -300,9 +300,11 @@ def fig_robustness(rows, cls):
             hi = np.array([p[1][k][2] for p in pts]) * sc
             ax.fill_between(v, lo, hi, color=col, alpha=0.15, lw=0); ax.plot(v, m, "-o", color=col, ms=2.6, lw=1.0, label=lb)
     axe.plot(ENVELOPE, ENVELOPE, color=figstyle.MUTED, lw=0.6, ls="--", label="zero tracking")
-    axe.set_ylabel("RMS@H (rad/s)"); axe2.set_ylabel("failure (%)"); axe2.set_xlabel(r"reference magnitude $|r_{\mathrm{ref}}|$ (rad/s)")
-    axe2.set_ylim(0, 100); axe.legend(loc="upper left", fontsize=5.5); plt.setp(axe.get_xticklabels(), visible=False)
-    for ax, l, x in ((axr, "a", -0.62), (axf, "b", -0.08), (axe, "c", -0.22), (axe2, "d", -0.22)): figstyle.panel_label(ax, l, x=x)
+    axe.set_ylabel("RMS@H (rad/s)"); axe2.set_ylabel("failure (%)"); axe2.set_xlabel(r"$|r_{\mathrm{ref}}|$ (rad/s)")
+    axe2.set_ylim(0, 100); axe.set_ylim(0, 1.25)
+    axe.legend(loc="upper left", fontsize=6, ncol=2, handlelength=1.2, columnspacing=0.8, borderaxespad=0.1)
+    plt.setp(axe.get_xticklabels(), visible=False)
+    for ax, l, x in ((axr, "a", -0.62), (axf, "b", -0.08), (axe, "c", -0.38), (axe2, "d", -0.38)): figstyle.panel_label(ax, l, x=x)
     figstyle.save(fig, os.path.join(FIG, "fig_robustness"))
 
 

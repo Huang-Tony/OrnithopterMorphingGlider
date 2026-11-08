@@ -18,6 +18,8 @@ import numpy as np
 import common  # noqa: F401
 from common import RUNS_DIR
 import figstyle
+FS = 1.35                      # revision R1: lettering scale so that the printed size at the text width is >= ~5.5 pt
+W_FIG = 183 * figstyle.MM      # layout designed at 183 mm; included at the 131 mm text width
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Polygon, Ellipse, Arc
 from glider_mesh import wing_grid, bezier, fuselage_grid
@@ -101,7 +103,7 @@ def draw_view(ax, cfg_neu, cfg, view, *, mom_axis, mom_val, title, subtitle, sho
             e = o + L * np.array(d)
             ax.add_patch(FancyArrowPatch(o, e, arrowstyle="-|>", mutation_scale=4, color=MUTED, lw=0.5,
                                          shrinkA=0, shrinkB=0))
-            ax.text(*(o + (L + 0.06) * np.array(d)), lbl, fontsize=5.2, color=MUTED, ha="center", va="center")
+            ax.text(*(o + (L + 0.06) * np.array(d)), lbl, fontsize=5.2*FS, color=MUTED, ha="center", va="center")
     ax.set_aspect("equal"); ax.axis("off")
 
 
@@ -109,7 +111,7 @@ def main():
     figstyle.apply()
     D = json.load(open(os.path.join(RUNS_DIR, "analysis", "platform_configs.json")))["configs"]
     anchors = json.load(open(os.path.join(RD, "anchors.json")))["hero"]
-    fig = plt.figure(figsize=(figstyle.DOUBLE, 4.45))
+    fig = plt.figure(figsize=(W_FIG, 4.45))
 
     # ---------------- a: hero render ----------------
     axa = fig.add_axes([0.0, 0.45, 0.575, 0.53]); axa.axis("off")
@@ -117,7 +119,7 @@ def main():
     axa.set_xlim(-0.02 * w, 1.04 * w); axa.set_ylim(1.00 * h, -0.03 * h)
     P = {k: to_crop(v, box) for k, v in anchors.items()}
 
-    def lab(keys, text, xy_text, color=INK, ha="center", va="center", fs=6.0):
+    def lab(keys, text, xy_text, color=INK, ha="center", va="center", fs=6.0*FS):
         keys = [keys] if isinstance(keys, str) else keys
         rel = {"top": 1.0, "bottom": 0.0, "center": 0.5}
         for i, k in enumerate(keys):          # leader lines start at the edge of the text box facing the target
@@ -132,17 +134,17 @@ def main():
     lab("P0", "$P_0$ root (fixed)", (0.58, 0.82), color=BLUE)
     lab("fuselage_nose", "fuselage (avionics, IMU)", (0.27, 0.85))
     x3, y3 = P["R_P3"]
-    axa.text(x3 + 0.085 * w, y3 - 0.15 * h, "$P_3$\ncommanded tip", fontsize=6.0, color=ORANGE, ha="center", va="center",
+    axa.text(x3 - 0.17 * w, y3 + 0.02 * h, "$P_3$ commanded tip", fontsize=6.0*FS, color=ORANGE, ha="center", va="center",
              linespacing=1.1, bbox=dict(fc="white", ec="none", pad=0.4, alpha=0.85))
     for k, t in (("tip_dx", "$\\Delta x$"), ("tip_dy", "$\\Delta y$"), ("tip_dz", "$\\Delta z$")):
-        x, y = P[k]; axa.text(x, y, t, fontsize=5.6, color=ORANGE, ha="center", va="center",
+        x, y = P[k]; axa.text(x, y, t, fontsize=5.6*FS, color=ORANGE, ha="center", va="center",
                               bbox=dict(fc="white", ec="none", pad=0.3, alpha=0.8))
     for k, t in (("ax_x", "$x_b$"), ("ax_y", "$y_b$"), ("ax_z", "$z_b$")):
-        x, y = P[k]; axa.text(x, y, t, fontsize=5.6, color=INK2, ha="center", va="center")
-    fig.text(0.005, 0.985, "a", fontsize=8, fontweight="bold", va="top")
+        x, y = P[k]; axa.text(x, y, t, fontsize=5.6*FS, color=INK2, ha="center", va="center")
+    fig.text(0.005, 0.985, "a", fontsize=8*FS, fontweight="bold", va="top")
 
     # ---------------- b: morphing modes ----------------
-    fig.text(0.578, 0.985, "b", fontsize=8, fontweight="bold", va="top")
+    fig.text(0.578, 0.985, "b", fontsize=8*FS, fontweight="bold", va="top")
     neu = D["neutral"]
     modes = [("diff_sweep", "top", "z", "Differential sweep", "top view, nose up",
               {"o": (1.22, -0.62), "dirs": [((0, 1), "$x_b$"), ((-1, 0), "$y_b$")]}),
@@ -161,19 +163,19 @@ def main():
         mv = D[name]["dM"]["xyz".index(axn)]
         draw_view(ax, neu, D[name], view, mom_axis=axn, mom_val=mv, title=title, subtitle=sub, show_axes=tri)
         (xa, xb), (ya, yb) = lims[view]; ax.set_xlim(xa, xb); ax.set_ylim(ya, yb)
-        fig.text(x0, y0 + (0.228 if tight else 0.262), title, fontsize=6.2, fontweight="bold", color=INK, va="top")
-        fig.text(x0, y0 + (0.202 if tight else 0.236), sub, fontsize=5.4, color=MUTED, va="top")
-        fig.text(x0 + 0.095, y0 + (0.080 if tight else 0.030), f"$\\Delta M_{axn}$ = {mv:+.2f} N m ({names[axn]})", fontsize=5.6,
+        fig.text(x0, y0 + (0.228 if tight else 0.262), title, fontsize=6.2*FS, fontweight="bold", color=INK, va="top")
+        fig.text(x0, y0 + (0.202 if tight else 0.236), sub, fontsize=5.4*FS, color=MUTED, va="top")
+        fig.text(x0 + 0.095, y0 + (0.080 if tight else 0.030), f"$\\Delta M_{axn}$ = {mv:+.2f} N m ({names[axn]})", fontsize=5.6*FS,
                  color=INK, ha="center", va="top")
 
     # ---------------- c: block diagram ----------------
     ax = fig.add_axes([0.0, 0.0, 1.0, 0.445]); ax.axis("off"); ax.set_xlim(0, 183); ax.set_ylim(0, 68)
-    ax.text(1, 67, "c", fontsize=8, fontweight="bold", va="top")
+    ax.text(1, 67, "c", fontsize=8*FS, fontweight="bold", va="top")
 
     def block(x, y, w_, h_, name, sub=None, fc=PLANT_F, ec=INK2):
         ax.add_patch(FancyBboxPatch((x, y), w_, h_, boxstyle="round,pad=0,rounding_size=1.6", fc=fc, ec=ec, lw=0.6))
-        ax.text(x + w_ / 2, y + h_ / 2 + (2.4 if sub else 0), name, ha="center", va="center", fontsize=6.2, color=INK)
-        if sub: ax.text(x + w_ / 2, y + h_ / 2 - 2.9, sub, ha="center", va="center", fontsize=5.2, color=INK2)
+        ax.text(x + w_ / 2, y + h_ / 2 + (2.4 if sub else 0), name, ha="center", va="center", fontsize=6.2*FS, color=INK)
+        if sub: ax.text(x + w_ / 2, y + h_ / 2 - 2.9, sub, ha="center", va="center", fontsize=5.2*FS, color=INK2)
 
     def sig(pts, label=None, at=0.5, off=(0, 1.3), ha="center", va="bottom", color=INK):
         pts = np.asarray(pts, float)
@@ -183,15 +185,15 @@ def main():
         if label:
             p, q = pts[0], pts[1]
             ax.text(p[0] + (q[0] - p[0]) * at + off[0], p[1] + (q[1] - p[1]) * at + off[1], label, ha=ha, va=va,
-                    fontsize=5.6, color=color)
+                    fontsize=5.6*FS, color=color)
 
     yb, hb = 38, 13
     ax.add_patch(FancyBboxPatch((40, 4), 141, 56, boxstyle="round,pad=0,rounding_size=2.0", fc="none", ec=MUTED,
                                 lw=0.6, ls=(0, (3, 2))))
-    ax.text(42.5, 57.8, "Simulated plant  ($\\Delta t$ = 40 ms control step; rigid-body integration in 4 × 10 ms substeps)",
-            ha="left", va="top", fontsize=5.5, color=MUTED)
+    ax.text(42.5, 30.0, "Simulated plant  ($\\Delta t$ = 40 ms control step, 4 × 10 ms integration substeps)",
+            ha="left", va="center", fontsize=5.5*FS, color=MUTED)
     block(7, yb, 24, hb, "Policy $\\pi_\\theta$", "SAC actor (MLP)", fc=CTRL_F, ec=BLUE)
-    block(46, yb, 23, hb, "Actuators", "first-order lag, $\\tau$ = 70 ms")
+    block(46, yb, 23, hb, "Actuators", "lag $\\tau$ = 70 ms")
     block(78, yb, 23, hb, "Spar solver", "$P_1, P_2 = \\arg\\min J$")
     block(110, yb, 28, hb, "Aerodynamics", "strip theory, $c_l$, $c_d$, $c_{m0}$")
     block(147, yb, 30, hb, "Rigid-body dynamics", "6 DOF, quaternion")
@@ -205,10 +207,10 @@ def main():
     sig([(162, yb), (162, 9 + hb)], "state", at=0.5, off=(1.5, 0), ha="left", va="center")
     sig([(147, 9 + hb / 2), (138, 9 + hb / 2)], "$\\mathbf{y}$", off=(0, 0.8))
     sig([(78, 9 + hb / 2), (19, 9 + hb / 2), (19, yb)])
-    ax.text(20.5, 27, "$\\tilde{\\mathbf{s}}_t$", fontsize=6.0, ha="left", va="center")
+    ax.text(20.5, 27, "$\\tilde{\\mathbf{s}}_t$", fontsize=6.0*FS, ha="left", va="center")
     sig([(0.5, yb + hb - 3.5), (7, yb + hb - 3.5)], "$r_{\\mathrm{ref}}$", off=(-0.5, 0.6))
     sig([(124, 66.5), (124, yb + hb)], None, color=ENV)
-    ax.text(125.5, 66.5, "gusts, wind, randomized parameters", fontsize=5.5, color=ENV, va="top")
+    ax.text(125.5, 66.5, "gusts, wind, randomized parameters", fontsize=5.5*FS, color=ENV, va="top")
     figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_platform"))
     print("saved")
 

@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 MM = 1 / 25.4
 SINGLE = 89 * MM          # Nature single column
 ONEHALF = 120 * MM
-DOUBLE = 183 * MM         # Nature double column
+DOUBLE = 131 * MM         # revision R1: full text width of the journal template (was 183 mm, Nature double column)
 TEXT = 131 * MM           # text width of the journal template (sn-jnl, 372 pt)
 
 SLOT = {"blue": "#2a78d6", "orange": "#eb6834", "aqua": "#1baf7a", "yellow": "#eda100",
@@ -46,8 +46,8 @@ def apply():
         "font.family": "sans-serif", "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
         "mathtext.fontset": "custom", "mathtext.rm": "Arial", "mathtext.it": "Arial:italic",
         "mathtext.bf": "Arial:bold", "mathtext.sf": "Arial",
-        "font.size": 6.5, "axes.labelsize": 7, "axes.titlesize": 7, "xtick.labelsize": 6, "ytick.labelsize": 6,
-        "legend.fontsize": 6, "legend.frameon": False, "legend.handlelength": 1.6, "legend.borderaxespad": 0.3,
+        "font.size": 7, "axes.labelsize": 7, "axes.titlesize": 7, "xtick.labelsize": 6.5, "ytick.labelsize": 6.5,
+        "legend.fontsize": 6.5, "legend.frameon": False, "legend.handlelength": 1.6, "legend.borderaxespad": 0.3,
         "axes.edgecolor": INK, "axes.labelcolor": INK, "xtick.color": INK, "ytick.color": INK, "text.color": INK,
         "axes.linewidth": 0.5, "xtick.major.width": 0.5, "ytick.major.width": 0.5,
         "xtick.minor.width": 0.4, "ytick.minor.width": 0.4, "xtick.major.size": 2.5, "ytick.major.size": 2.5,
