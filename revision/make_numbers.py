@@ -177,6 +177,30 @@ def main():
         for strat, tag in (("strategy_baseline", "Base"), ("strategy_curriculum", "Curr")):
             st = it.get(strat, {})
             if st: put(f"Strat{tag}DsSlope", st["diff_sweep"]["slope_mean"], "{:.2f}"); put(f"Strat{tag}DsRsq", st["diff_sweep"]["r2_mean"], "{:.2f}")
+    tv = J("task_curriculum_validation.json")      # validation episodes (seeds 60000+), development decision
+    if tv:
+        for grp, tag in (("flat", "Flat"), ("oldcur", "OldCur"), ("tc", "Tc")):
+            for cond, c in (("nominal", "Nom"), ("randomized", "Rand")):
+                v = [np.mean(r["rms_h"]) for k, r in tv.items() if k.startswith(grp + "_") and k.endswith("|" + cond)]
+                put(f"Val{tag}{c}Rmsh", float(np.mean(v)) if v else None, "{:.3f}"); put(f"Val{tag}NSeeds", len(v), "{:d}")
+    te = J("task_curriculum_eval.json")           # fixed design, evaluation protocol
+    if te:
+        for cond, c in (("nominal", "Nom"), ("randomized", "Rand")):
+            r = te["summary"].get(f"task_curriculum|{cond}")
+            if r:
+                put(f"RTcur{c}Rmsh", r["rms_h"][0]); put(f"RTcur{c}RmshLo", r["rms_h"][1]); put(f"RTcur{c}RmshHi", r["rms_h"][2])
+                put(f"RTcur{c}Fail", 100 * r.get("failure", float("nan")), "{:.0f}"); put("RTcurNSeeds", len(r["seed_means"]), "{:d}")
+            for o, t in (("baseline", "Base"), ("curriculum", "Curr")):
+                tt = te["tests"].get(f"task_curriculum_vs_{o}|{cond}")
+                if tt: put(f"RPTcurVs{t}{c}", tt["p_mannwhitney"], "{:.3f}")
+    ma = J("mode_aware_pilot.json")               # single-seed pilot, validation episodes
+    if ma:
+        for who, tag in (("flat_seed7", "Flat"), ("modeaware_seed7", "Ma")):
+            for cond, c in (("nominal", "Nom"), ("randomized", "Rand"), ("struct_mode", "Struct")):
+                r = ma["results"].get(f"{who}|{cond}")
+                if r:
+                    put(f"Pilot{tag}{c}Rmsh", r["rms_yaw_horizon"]); put(f"Pilot{tag}{c}Fail", 100 * r["failure"], "{:.0f}")
+                    put(f"Pilot{tag}{c}Hf", 100 * r["hf_action_power_frac_2Hz"], "{:.0f}")
     cf = J("command_filter.json")
     if cf:
         put("FiltAlpha", cf["selected_alpha"], "{:.2f}"); put("FiltCutHz", cf["selected_cutoff_hz"], "{:.1f}")
@@ -278,6 +302,8 @@ def main():
             M.setdefault(f"{k}{c}", r"\textbf{??}")
         for o in ("Curr", "Resid"):
             M.setdefault(f"RPBaseVs{o}{c}", r"\textbf{??}"); M.setdefault(f"RDBaseVs{o}{c}", r"\textbf{??}")
+    for k in ("FiltAlpha", "FiltCutHz") + tuple(f"Filt{t}{q}" for t in ("Nom", "Rand", "Struct") for q in ("Rmsh", "Fail", "TipSpeed", "Hf")):
+        M.setdefault(k, r"\textbf{??}")
     for t in ("Base", "Curr", "Resid"):
         for suf in ("RandRmshHeld", "RandRmshHeldLo", "RandRmshHeldHi", "RandFailHeld"):
             M.setdefault(f"R{t}{suf}", r"\textbf{??}")
