@@ -75,7 +75,7 @@ def add_glider(p, ep, t, pv):
 ARC_T = 2.0          # [s] the yaw arcs show the heading change over this horizon at the given yaw rate
 
 
-def add_yaw_arc(p, pv, x0, psi, rate, radius, color, tube_r=0.016, opacity=1.0):
+def add_yaw_arc(p, pv, x0, psi, rate, radius, color, tube_r=0.0075, opacity=1.0):
     """Horizontal arc around the glider from the current heading psi to psi + rate * ARC_T, with an arrowhead.
     Positive yaw rate (z up) turns the nose to the left (counter-clockwise seen from above). A rate below
     0.02 rad/s is drawn as a short straight arrow ahead of the nose ('hold heading')."""
@@ -90,7 +90,7 @@ def add_yaw_arc(p, pv, x0, psi, rate, radius, color, tube_r=0.016, opacity=1.0):
         pts = x0 + radius * np.stack([np.cos(th), np.sin(th), np.zeros_like(th)], axis=1)
         p.add_mesh(pv.Spline(pts, 96).tube(radius=tube_r), color=color, opacity=opacity, smooth_shading=True)
         tang = np.sign(sweep) * np.array([-np.sin(th[-1]), np.cos(th[-1]), 0.0]); tip = pts[-1]
-    p.add_mesh(pv.Cone(center=tip + 0.06 * tang, direction=tang, height=0.14, radius=0.055, resolution=24),
+    p.add_mesh(pv.Cone(center=tip + 0.035 * tang, direction=tang, height=0.075, radius=0.026, resolution=24),
                color=color, opacity=opacity, smooth_shading=True)
 
 
@@ -99,8 +99,8 @@ def render_view(ep, t, size, pv, label=None, color=C_A):
     p.set_background("#f4f6f9", top="#dfe6ee")
     R, x0 = add_glider(p, ep, t, pv)
     psi = float(ep["yaw"][t])
-    add_yaw_arc(p, pv, x0, psi, ep["yaw_ref"][t], 1.30, C_REF, opacity=0.85)          # commanded
-    add_yaw_arc(p, pv, x0, psi, ep["yaw_rate"][t], 1.50, color)                        # actual
+    add_yaw_arc(p, pv, x0, psi, ep["yaw_ref"][t], 1.15, C_REF, opacity=0.85)          # commanded
+    add_yaw_arc(p, pv, x0, psi, ep["yaw_rate"][t], 1.27, color)                        # actual
     # ground reference grid 12 m below the glider (moves with it in discrete 2 m cells, so motion is visible)
     gz = x0[2] - 12.0; cx, cy = np.floor(x0[0] / 2) * 2, np.floor(x0[1] / 2) * 2
     plane = pv.Plane(center=(cx, cy, gz), direction=(0, 0, 1), i_size=60, j_size=60, i_resolution=30, j_resolution=30)
@@ -182,10 +182,6 @@ def make_video(name, panels, fps=25, quick=False, title="", t0=0):
                  handletextpad=0.2, borderaxespad=0.0)
         cmd = vax[k].text(0.03, 0.215, "", transform=vax[k].transAxes, fontsize=fs, color="#1a1a1a", va="bottom", zorder=6)
         gauges.append((mt, ma, cmd))
-    fig.text(0.01, 0.040, "3-D view (chase camera). Red spheres: the wingtip points whose positions the controller commands. "
-             "Grid: ground, 12 m below.", fontsize=10, color="#4d4d4d", ha="left", va="bottom")
-    fig.text(0.01, 0.014, "Arcs: heading change over the next 2 s if the yaw rate stayed constant \u2014 dark grey at the commanded "
-             "rate, coloured at the actual rate.", fontsize=10, color="#4d4d4d", ha="left", va="bottom")
     t_start = t0 if quick else 0
     for t in range(t_start, T):
         for k, (lab, ep, col) in enumerate(panels):
