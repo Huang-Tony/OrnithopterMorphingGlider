@@ -91,3 +91,12 @@ Not permitted: dropping seeds/episodes, changing the test set, metric or failure
   task curriculum (2 seeds, 17 and 117) 0.154 / 0.150. The design was not changed after seeing these numbers.
 * The fixed design is completed to 5 seeds (217, 317, 417; revision/tc_complete.sh) and evaluated once with the
   evaluation protocol (revision/eval_task_curriculum.py). Whether it enters the paper is the user's decision.
+
+
+## Note 2026-11-08 09:50 (task curriculum confirmed; 2M runs started)
+
+* Fixed task-curriculum design, 5 seeds, evaluation protocol (analysis/task_curriculum_eval.json): RMS@H 0.135
+  [0.124, 0.148] nominal, 0.166 [0.141, 0.194] randomized (failures 1.2% / 4.8%); flat SAC 0.138 / 0.172 (seed-level
+  Mann-Whitney p = 0.69 / 0.84); original curriculum 0.242 / 0.292 (p = 0.008 / 0.008).
+* Equal-2M runs started in the idle slots (revision/budget_sensitivity.py, revision_runs/budget2M): flat SAC and the
+  task curriculum, 5 seeds each, balanced order. Residual variant at 2M left to the user. Stoppable at any time.

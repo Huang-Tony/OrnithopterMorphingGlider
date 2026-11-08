@@ -31,8 +31,10 @@ MAIN = os.path.join(REPO, "revision_runs")
 EXT = os.path.join(MAIN, "budget2M")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 STEPS = 2_000_000
+# 2026-11-08 09:50: flat SAC and the task-distribution curriculum (validated design), balanced order; the residual
+# variant at 2M is left to the user's decision (add ("residual_curriculum", s + 20) entries to include it).
 JOBS = [(a, s + off) for s in (7, 107, 207, 307, 407)
-        for a, off in (("baseline", 0), ("curriculum", 10), ("residual_curriculum", 20))]
+        for a, off in (("baseline", 0), ("task_curriculum", 10))]
 LOG = os.path.join(EXT, "queue.log")
 
 
@@ -79,7 +81,8 @@ def launch(algo, seed):
     os.makedirs(os.path.join(EXT, "console"), exist_ok=True)
     lf = open(os.path.join(EXT, "console", f"{algo}_seed{seed}.log"), "a")
     env = dict(os.environ, REVISION_RUNS_DIR=EXT)
-    cmd = ["nice", "-n", "10", PY, "-u", os.path.join(HERE, "train_one.py"), "--algo", algo, "--seed", str(seed),
+    script = "train_task_curriculum.py" if algo.startswith("task_curriculum") else "train_one.py"
+    cmd = ["nice", "-n", "10", PY, "-u", os.path.join(HERE, script), "--algo", algo, "--seed", str(seed),
            "--steps", str(STEPS)]
     return subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT, env=env, cwd=REPO)
 
