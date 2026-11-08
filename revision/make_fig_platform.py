@@ -66,8 +66,10 @@ def draw_view(ax, cfg_neu, cfg, view, *, mom_axis, mom_val, title, subtitle, sho
         for side in ("R", "L"):
             P = np.asarray(c[side])
             if view == "top":
-                ax.add_patch(Polygon(proj(planform(P)), closed=True, fc=fc, ec=ec, lw=lw, zorder=z))
-                ax.plot(*proj(bezier(P, np.linspace(0, 1, 60))).T, color=ec, lw=lw * 1.4, zorder=z + 0.5)
+                if z == 1:
+                    ax.add_patch(Polygon(proj(planform(P)), closed=True, fc="none", ec=GHOST_E, lw=0.6, ls=(0, (2.5, 1.5)), zorder=z))
+                else:
+                    ax.add_patch(Polygon(proj(planform(P)), closed=True, fc=WING_F, ec=BLUE, lw=0.7, zorder=z))
             elif view == "front":
                 ax.plot(*proj(bezier(P, np.linspace(0, 1, 80))).T, color=ec, lw=2.2 if z > 1 else 1.8,
                         solid_capstyle="round", zorder=z, alpha=1.0 if z > 1 else 0.9)
@@ -85,10 +87,13 @@ def draw_view(ax, cfg_neu, cfg, view, *, mom_axis, mom_val, title, subtitle, sho
     for side in ("R", "L"):                                       # tip motion
         a, b = proj(np.asarray(cfg_neu[side][3])), proj(np.asarray(cfg[side][3]))
         if np.linalg.norm(b - a) > 1e-3:
-            ax.add_patch(FancyArrowPatch(a, b, arrowstyle="-|>", mutation_scale=6, color=ORANGE, lw=0.8, zorder=8,
+            ax.add_patch(FancyArrowPatch(a, b, arrowstyle="-|>", mutation_scale=6, color=ORANGE, lw=0.9, zorder=8,
                                          shrinkA=0, shrinkB=0))
-            ax.plot(*a, "o", ms=1.8, mfc="white", mec=ORANGE, mew=0.6, zorder=8)
     # moment glyph about the centre of mass
+    if mom_axis not in CCW[view]:
+        ax.set_aspect("equal"); ax.axis("off")
+        if show_axes: _triad(ax, show_axes)
+        return
     s = np.sign(mom_val) * CCW[view][mom_axis]
     r = 0.17; cen = (0.0, 0.0) if view != "front" else (0.0, -0.018)
     t1, t2 = (200, 340) if view != "side" else (20, 160)
@@ -97,14 +102,17 @@ def draw_view(ax, cfg_neu, cfg, view, *, mom_axis, mom_val, title, subtitle, sho
     ax.plot(xy[:-2, 0], xy[:-2, 1], color=INK, lw=0.7, zorder=9)
     ax.add_patch(FancyArrowPatch(xy[-4], xy[-1], arrowstyle="-|>", mutation_scale=6, color=INK, lw=0.7, zorder=9,
                                  shrinkA=0, shrinkB=0))
-    if show_axes:                                                  # small orientation triad
-        o = np.array(show_axes["o"]); L = 0.16
-        for (d, lbl) in show_axes["dirs"]:
-            e = o + L * np.array(d)
-            ax.add_patch(FancyArrowPatch(o, e, arrowstyle="-|>", mutation_scale=4, color=MUTED, lw=0.5,
-                                         shrinkA=0, shrinkB=0))
-            ax.text(*(o + (L + 0.06) * np.array(d)), lbl, fontsize=5.2*FS, color=MUTED, ha="center", va="center")
+    if show_axes: _triad(ax, show_axes)
     ax.set_aspect("equal"); ax.axis("off")
+
+
+def _triad(ax, spec):
+    """Small orientation triad in a clear corner of the view."""
+    o = np.array(spec["o"]); L = spec.get("L", 0.16)
+    for (d, lbl) in spec["dirs"]:
+        e = o + L * np.array(d)
+        ax.add_patch(FancyArrowPatch(o, e, arrowstyle="-|>", mutation_scale=5, color=INK2, lw=0.6, shrinkA=0, shrinkB=0))
+        ax.text(*(o + (L + spec.get("pad", 0.07)) * np.array(d)), lbl, fontsize=5.6*FS, color=INK2, ha="center", va="center")
 
 
 def main():
@@ -128,9 +136,9 @@ def main():
                          color=color if i == 0 else (0, 0, 0, 0), linespacing=1.15,
                          arrowprops=dict(arrowstyle="-", color=color, lw=0.45, shrinkA=1.5, shrinkB=1.5,
                                          relpos=(0.5, 1.0 - ry)))
-    lab("skin_L", "wing skin\n(E387-type section)", (0.53, 0.10))
+    lab("skin_L", "wing skin\n(E387-type section)", (0.14, 0.40))
     lab(["R_P1", "R_P2"], "$P_1$, $P_2$ solved by\nenergy minimization", (0.78, 0.20), color=BLUE)
-    lab("spar_R", "compliant spar\n(cubic Bézier)", (0.97, 0.44), color=BLUE)
+    lab("spar_R", "compliant spar\n(cubic Bézier)", (0.93, 0.45), color=BLUE)
     lab("P0", "$P_0$ root (fixed)", (0.58, 0.82), color=BLUE)
     lab("fuselage_nose", "fuselage (avionics, IMU)", (0.27, 0.85))
     x3, y3 = P["R_P3"]
@@ -144,19 +152,19 @@ def main():
     fig.text(0.005, 0.985, "a", fontsize=8*FS, fontweight="bold", va="top")
 
     # ---------------- b: morphing modes ----------------
-    fig.text(0.578, 0.985, "b", fontsize=8*FS, fontweight="bold", va="top")
+    fig.text(0.566, 0.985, "b", fontsize=8*FS, fontweight="bold", va="top")
     neu = D["neutral"]
     modes = [("diff_sweep", "top", "z", "Differential sweep", "top view, nose up",
               {"o": (1.22, -0.62), "dirs": [((0, 1), "$x_b$"), ((-1, 0), "$y_b$")]}),
-             ("sym_sweep", "side", "y", "Symmetric sweep", "side view, nose right",
-              {"o": (0.26, -0.13), "dirs": [((1, 0), "$x_b$"), ((0, 1), "$z_b$")]}),
-             ("diff_dihedral", "front", "x", "Differential dihedral", "front view",
-              {"o": (-1.28, -0.20), "dirs": [((1, 0), "$y_b$"), ((0, 1), "$z_b$")]}),
-             ("diff_span", "front", "x", "Differential span", "front view", None)]
+             ("sym_sweep", "top", "y", "Symmetric sweep", "top view, nose up", None),
+             ("diff_dihedral", "front", "x", "Differential dihedral", "front view, from ahead",
+              {"o": (-1.30, -0.42), "dirs": [((1, 0), "$y_b$"), ((0, 1), "$z_b$")], "L": 0.13, "pad": 0.09}),
+             ("diff_span", "front", "x", "Differential span", "front view, from ahead",
+              {"o": (-1.30, -0.42), "dirs": [((1, 0), "$y_b$"), ((0, 1), "$z_b$")], "L": 0.13, "pad": 0.09})]
     lims = {"top": ((-1.32, 1.32), (-0.68, 0.44)), "side": ((-0.48, 0.48), (-0.16, 0.30)),
-            "front": ((-1.36, 1.36), (-0.24, 0.32))}
+            "front": ((-1.36, 1.36), (-0.46, 0.32))}
     names = {"x": "roll", "y": "pitch", "z": "yaw"}
-    cells = [(0.598, 0.715), (0.805, 0.715), (0.598, 0.425), (0.805, 0.425)]
+    cells = [(0.592, 0.715), (0.782, 0.715), (0.592, 0.425), (0.782, 0.425)]
     for (name, view, axn, title, sub, tri), (x0, y0) in zip(modes, cells):
         tight = view == "front"                     # wide, flat views: shorter cell so labels stay close
         ax = fig.add_axes([x0, y0 + (0.075 if tight else 0.035), 0.19, 0.11 if tight else 0.165])
@@ -165,8 +173,9 @@ def main():
         (xa, xb), (ya, yb) = lims[view]; ax.set_xlim(xa, xb); ax.set_ylim(ya, yb)
         fig.text(x0, y0 + (0.228 if tight else 0.262), title, fontsize=6.2*FS, fontweight="bold", color=INK, va="top")
         fig.text(x0, y0 + (0.202 if tight else 0.236), sub, fontsize=5.4*FS, color=MUTED, va="top")
-        fig.text(x0 + 0.095, y0 + (0.080 if tight else 0.030), f"$\\Delta M_{axn}$ = {mv:+.2f} N m ({names[axn]})", fontsize=5.6*FS,
-                 color=INK, ha="center", va="top")
+        what = names[axn] + ((", nose down" if mv > 0 else ", nose up") if axn == "y" else "")
+        fig.text(x0, y0 + (0.072 if tight else 0.030), f"$\\Delta M_{axn}$ = {mv:+.2f} N m ({what})", fontsize=5.6*FS,
+                 color=INK, ha="left", va="top")
 
     # ---------------- c: block diagram ----------------
     ax = fig.add_axes([0.0, 0.0, 1.0, 0.445]); ax.axis("off"); ax.set_xlim(0, 183); ax.set_ylim(0, 68)

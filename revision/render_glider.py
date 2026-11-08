@@ -86,19 +86,19 @@ def main():
     cfgs = data["configs"]
     hero_cam = [(3.3, 2.9, 2.35), (-0.05, 0.05, 0.02), (0, 0, 1)]     # elevated front three-quarter view
     H = cfgs["hero"]; R, L = np.array(H["R"]), np.array(H["L"])
-    tip = R[3]; tri0 = np.array([0.50, -0.42, -0.30]); La = 0.18
+    tip = R[3]; tri0 = np.array([0.0, 0.0, 0.0]); La = 0.30       # body axes drawn at the centre of mass (origin)
     def extras(p):
-        for d in ([1, 0, 0], [0, 1, 0], [0, 0, 1]):        # commanded tip degrees of freedom
-            p.add_mesh(pv.Arrow(start=tip, direction=d, scale=0.17, tip_length=0.28, tip_radius=0.07, shaft_radius=0.025),
+        for d in ([1, 0, 0], [0, 1, 0], [0, 0, 1]):        # commanded tip degrees of freedom (short, thick, orange)
+            p.add_mesh(pv.Arrow(start=tip, direction=d, scale=0.15, tip_length=0.30, tip_radius=0.08, shaft_radius=0.03),
                        color=ACC, smooth_shading=True)
-        for d in ([1, 0, 0], [0, 1, 0], [0, 0, 1]):        # body axes
-            p.add_mesh(pv.Arrow(start=tri0, direction=d, scale=La, tip_length=0.25, tip_radius=0.06, shaft_radius=0.02),
-                       color="#4d4d4d", smooth_shading=True)
+        for d in ([1, 0, 0], [0, 1, 0], [0, 0, 1]):        # body axes (long, thin, grey) through the centre of mass
+            p.add_mesh(pv.Arrow(start=tri0, direction=d, scale=La, tip_length=0.09, tip_radius=0.022, shaft_radius=0.006),
+                       color="#6b6b6b", smooth_shading=True)
     anchors = {"P0": R[0], "R_P1": R[1], "R_P2": R[2], "R_P3": R[3],
                "fuselage_nose": [0.20, 0.0, -0.025], "skin_L": bezier(L, [0.55])[0] + np.array([-0.06, 0, 0.0]),
-               "spar_R": bezier(R, [0.80])[0], "tip_dx": tip + [0.19, 0, 0], "tip_dy": tip + [0, 0.19, 0],
-               "tip_dz": tip + [0, 0, 0.19], "ax_x": tri0 + [La + 0.03, 0, 0], "ax_y": tri0 + [0, La + 0.03, 0],
-               "ax_z": tri0 + [0, 0, La + 0.03], "ax_o": tri0}
+               "spar_R": bezier(R, [0.80])[0], "tip_dx": tip + [0.18, 0, 0], "tip_dy": tip + [0, 0.18, 0],
+               "tip_dz": tip + [0, 0, 0.18], "ax_x": tri0 + [La + 0.05, 0, 0], "ax_y": tri0 + [0, La + 0.05, 0],
+               "ax_z": tri0 + [0, 0, La + 0.05], "ax_o": tri0}
     a = render(H, "hero", hero_cam, show_cp={"R"}, anchors=anchors, zoom=1.55, extras=extras, view_angle=24, size=(3200, 2000))
     front = [(3.0, 0.0, 0.10), (0.0, 0.0, 0.10), (0, 0, 1)]         # looking aft, parallel projection
     top = [(0.0, 0.0, 3.0), (0.0, 0.0, 0.0), (1, 0, 0)]             # plan view, nose up (+y wing on the left)

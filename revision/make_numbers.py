@@ -278,6 +278,8 @@ def main():
             if p:
                 put(f"SmoothPilot{tag}Rmsh", p["rms_yaw_horizon"], "{:.3f}"); put(f"SmoothPilot{tag}Hf", 100 * p["hf_action_power_frac_2Hz"], "{:.0f}")
                 put(f"SmoothPilot{tag}TipSpeed", p["mean_tip_speed_mps"], "{:.2f}")
+    hb = J("hold_bias.json")
+    if hb: put("HoldBiasMed", hb["median_abs"], "{:.2f}"); put("HoldBiasPNinety", hb["p90_abs"], "{:.2f}")
     sa = J("strategy.json")
     if sa:
         for name, tag in (("SAC", "Sac"), ("Curriculum", "Curr"), ("Residual", "Resid"), ("Heuristic", "Heur"), ("LQR", "Lqr"), ("MPC", "Mpc"), ("PID", "Pid")):

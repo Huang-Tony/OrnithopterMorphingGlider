@@ -69,7 +69,7 @@ def main():
     ax.bar(np.arange(1, len(ev) + 1), 100 * np.array(ev), color=figstyle.NEUTRAL, width=0.6, lw=0)
     ax.set_xlabel("principal component"); ax.set_ylabel("explained variance (%)")
     ax.set_xticks(np.arange(1, len(ev) + 1))
-    txt = "\n".join(f"PC{k[2]} vs {v}: {d['latent'][k][v]:+.2f}" for k in ("pc1_corr", "pc2_corr")
+    txt = "\n".join(f"PC{k[2]} vs {v}: " + f"{d['latent'][k][v]:+.2f}".replace("-", "\u2212") for k in ("pc1_corr", "pc2_corr")
                     for v in ("yaw_ref", "roll"))
     ax.set_ylim(0, 100 * max(ev) * 1.9)
     ax.text(0.98, 0.98, txt.replace("yaw_ref", r"$r_\mathrm{ref}$").replace("roll", r"$\phi$"), transform=ax.transAxes,

@@ -210,13 +210,14 @@ def main():
     ax.imshow(ph); ax.set_axis_off(); ax.set_anchor("N")
     import matplotlib.patheffects as pe
     halo = [pe.withStroke(linewidth=1.6, foreground="white")]
-    arr = dict(arrowstyle="-", color=figstyle.INK, lw=0.5, shrinkA=1, shrinkB=0)
-    for xy, txy, lab, ha in (((1890, 32), (1500, 230), "motion-capture cameras", "center"),
-                             ((690, 590), (330, 1000), "joint (masked)", "center"),
-                             ((1100, 700), (1150, 1080), "markers", "center"), ((1560, 545), (1960, 760), "servo", "center")):
-        t = ax.annotate(lab, xy=xy, xytext=txy, fontsize=6.3, color=figstyle.INK, ha=ha, va="center", arrowprops=arr)
+    arr = dict(arrowstyle="-", color=figstyle.INK, lw=0.5, shrinkA=0.5, shrinkB=0)
+    tb = dict(boxstyle="square,pad=0.15", fc="none", ec="none")          # invisible box: leader lines start at the text edge
+    for xy, txy, lab in (((1890, 32), (1180, 150), "motion-capture cameras"), ((1100, 700), (1150, 1080), "markers"),
+                         ((1560, 545), (1960, 760), "servo")):
+        t = ax.annotate(lab, xy=xy, xytext=txy, fontsize=6.3, color=figstyle.INK, ha="center", va="center", arrowprops=arr, bbox=tb)
         t.set_path_effects(halo)
-    ax.annotate("", xy=(216, 450), xytext=(1500, 230), arrowprops=arr)
+    ax.annotate("motion-capture cameras", xy=(216, 450), xytext=(1180, 150), fontsize=6.3, color=(0, 0, 0, 0), ha="center",
+                va="center", arrowprops=arr, bbox=tb)                     # second leader from the same label
     ax.text(-0.02, 1.02, "a", transform=ax.transAxes, fontsize=8, fontweight="bold", va="bottom")
     ax = fig.add_subplot(gs[0, 1]); ex = sorted(fits, key=lambda f: f["speed_deg_s"])
     pick = [ex[len(ex) // 2], ex[-1]] if len(ex) > 1 else ex

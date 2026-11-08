@@ -112,7 +112,7 @@ def main():
     curves = np.array([proxy_cl(aa - ph["alpha0"], d_) for d_ in draws[:400]])
     x_proxy = np.degrees(aa)
     ax.fill_between(x_proxy, np.percentile(curves, 5, 0), np.percentile(curves, 95, 0), color=figstyle.LIGHT, alpha=0.55,
-                    lw=0, label="v2, randomised 5–95%")
+                    lw=0, label="v2, randomized 5–95%")
     ax.plot(x_proxy, proxy_cl(aa - ph["alpha0"], ph), color=figstyle.INK, lw=1.0, label="Proxy v2 (calibrated)")
     p1 = v1_phys(); ax.plot(x_proxy, proxy_cl(aa - p1["alpha0"], p1), color=figstyle.MUTED, lw=0.9, ls="--",
                             label="Proxy v1 (submitted)")
@@ -124,7 +124,7 @@ def main():
         xs = np.linspace(0, 9, 10); ax.plot(xs, a3 * np.radians(xs), "--", color=col, lw=0.7)
     ax.set_xlabel(r"$\alpha - \alpha_{L0}$ (deg)"); ax.set_ylabel(r"$c_l$"); ax.set_xlim(-4, 20); ax.set_ylim(-0.3, 1.45)
     ax.legend(loc="lower right", fontsize=5.8); figstyle.panel_label(ax, "a")
-    ax.text(-3.4, 1.36, "coloured dashes: finite-wing\nslope from 2-D data\n(Helmbold, AR = 13.3)", fontsize=5.5,
+    ax.text(-3.4, 1.36, "colored dashes: finite-wing\nslope from 2-D data\n(Helmbold, AR = 13.3)", fontsize=5.5,
             color=figstyle.INK2, va="top")
     ax = axs[1]
     cl_p = np.linspace(0.0, 1.15, 100)
@@ -137,7 +137,7 @@ def main():
         d = E[Re]; ok = np.isfinite(d[:, 2])
         cd3 = d[ok, 2] + d[ok, 1] ** 2 / (math.pi * e_osw * AR)      # profile + ideal induced drag
         ax.plot(d[ok, 1], cd3, "o", ms=2.6, mfc="white", mec=col, mew=0.7)
-    ax.text(0.47, 0.003, "E387: measured profile drag + ideal induced\ndrag $c_l^2/(\\pi e\\,AR)$, e = 0.95", fontsize=5.5,
+    ax.text(0.64, 0.002, "E387: measured profile\ndrag + ideal induced drag\n$c_l^2/(\\pi e\\,AR)$, e = 0.95", fontsize=5.5,
             color=figstyle.INK2, va="bottom")
     ax.set_xlabel(r"$c_l$"); ax.set_ylabel(r"$c_d$ (section, incl. induced)"); ax.set_ylim(0, 0.08); figstyle.panel_label(ax, "b")
     fig.tight_layout(w_pad=2.0); figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_aero_validation"))

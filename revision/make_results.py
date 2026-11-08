@@ -20,6 +20,7 @@ import common  # noqa: F401
 from common import RUNS_DIR, TRAIN_SEEDS, CONDITIONS, algo_seed, dump_json
 from morphing_glider.config import DT
 import figstyle
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 EV = os.path.join(RUNS_DIR, "eval_final"); RB = os.path.join(RUNS_DIR, "eval_robust"); FIG = os.path.join(RUNS_DIR, "paper_figures")
@@ -153,45 +154,76 @@ def color(n, i=0):
     return figstyle.ENTITY.get(n, figstyle.CLASSICAL_GREYS[i % len(figstyle.CLASSICAL_GREYS)])
 
 
+CLS_BAR = "#8a8a8a"          # one neutral grey for every classical controller (identity is given by the row label)
+
+
+def bar_color(n):
+    return figstyle.ENTITY.get(n, CLS_BAR)
+
+
+def tint(c, keep=0.42):
+    rgb = np.array(mpl.colors.to_rgb(c)); return tuple(1.0 - keep * (1.0 - rgb))
+
+
+def rows_y(names, gap=0.7):
+    """y positions top-down, with a gap between the learned policies and the classical controllers."""
+    y, cur = [], 0.0
+    for k, n in enumerate(names):
+        if k > 0 and n in CLASSICAL and names[k - 1] not in CLASSICAL: cur += gap
+        y.append(cur); cur += 1.0
+    return -np.array(y)
+
+
+def hbar(ax, y, m, lo, hi, col, h, left=0.0):
+    ax.barh(y, m - left, height=h, left=left, color=col, lw=0)
+    ax.plot([max(lo, left), hi], [y, y], color=figstyle.INK, lw=0.5, solid_capstyle="butt")
+
+
+def bar_axes(ax):
+    ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
+
+
 def fig_performance(S):
     names = [n for n in ALGOS + ["KAN student"] + CLASSICAL if any(f"{n}|{c}" in S for c in CONDITIONS)]
     mets = [("rms_yaw_horizon", "RMS@H (rad/s)", 1), ("failure", "failure rate (%)", 100), ("mean_settle_time", "settling time (s)", 1)]
-    fig, axs = plt.subplots(1, 3, figsize=(figstyle.DOUBLE, 0.32 * len(names) + 0.55), sharey=True)
-    y = np.arange(len(names))[::-1]
+    y = rows_y(names); h = 0.38
+    fig, axs = plt.subplots(1, 3, figsize=(figstyle.DOUBLE, 0.2 * len(names) + 0.75), sharey=True)
     for ax, (k, xl, sc) in zip(axs, mets):
         for i, n in enumerate(names):
-            for cond, off, mfc in (("nominal", 0.12, None), ("randomized", -0.12, "white")):
+            for cond, off, kp in (("nominal", h / 2, 1.0), ("randomized", -h / 2, 0.42)):
                 key = f"{n}|{cond}"
                 if key not in S: continue
-                m, lo, hi = (v * sc for v in S[key][k]); col = color(n, i)
-                ax.plot([lo, hi], [y[i] + off] * 2, color=col, lw=0.8, solid_capstyle="butt")
-                ax.plot(m, y[i] + off, "o", ms=3.2, mec=col, mfc=mfc or col, mew=0.8)
-        ax.set_xlabel(xl); ax.set_xlim(left=0)
-        ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
+                m, lo, hi = (v * sc for v in S[key][k])
+                hbar(ax, y[i] + off, m, lo, hi, tint(bar_color(n), kp), h)
+        ax.set_xlabel(xl); ax.set_xlim(left=0); bar_axes(ax)
+    axs[1].set_xlim(0, 100)
     axs[0].set_yticks(y); axs[0].set_yticklabels([label(n) for n in names])
-    axs[1].plot([], [], "o", ms=3.2, color=figstyle.INK, label="nominal"); axs[1].plot([], [], "o", ms=3.2, mfc="white", mec=figstyle.INK, label="randomized")
-    axs[1].legend(loc="lower right")
-    for ax, l in zip(axs, "abc"): figstyle.panel_label(ax, l, x=-0.05 if l != "a" else -0.42)
-    fig.tight_layout(w_pad=1.0); figstyle.save(fig, os.path.join(FIG, "fig_performance"))
+    from matplotlib.patches import Patch
+    axs[1].legend([Patch(color=CLS_BAR, lw=0), Patch(color=tint(CLS_BAR), lw=0)], ["nominal", "randomized"],
+                  loc="upper right", handlelength=1.0, handleheight=0.8)
+    for ax, l in zip(axs, "abc"): figstyle.panel_label(ax, l, x=-0.05 if l != "a" else -0.5)
+    fig.tight_layout(w_pad=1.2); figstyle.save(fig, os.path.join(FIG, "fig_performance"))
 
 
 def fig_extended(S):
     names = [n for n in ALGOS + ["KAN student"] + CLASSICAL if f"{n}|nominal" in S]
     mets = [("rms_roll_deg", "RMS roll (deg)"), ("rms_pitch_deg", "RMS pitch (deg)"), ("mean_tip_speed_mps", "tip speed (m/s)"),
-            ("mean_sq_action_increment", "action increment (m$^2$)"), ("mean_tip_displacement_m", "tip displacement (m)"),
+            ("mean_sq_action_increment", "command incr. (m$^2$)"), ("mean_tip_displacement_m", "tip displacement (m)"),
             ("mean_energy_loss_rate_W", "energy loss rate (W)"), ("mean_sink_rate_mps", "sink rate (m/s)"),
             ("mean_ctrl_latency_ms", "controller time (ms)")]
-    fig, axs = plt.subplots(2, 4, figsize=(figstyle.DOUBLE, 0.24 * len(names) * 2 + 1.0), sharey=True)
-    y = np.arange(len(names))[::-1]
+    y = rows_y(names); h = 0.62
+    fig, axs = plt.subplots(2, 4, figsize=(figstyle.DOUBLE, 2 * (0.15 * len(names) + 0.55)), sharey=True)
     for ax, (k, xl), l in zip(axs.flat, mets, "abcdefgh"):
+        logx = k == "mean_ctrl_latency_ms"; left = 1e-3 if logx else 0.0
         for i, n in enumerate(names):
-            m, lo, hi = S[f"{n}|nominal"][k]; col = color(n, i)
-            ax.plot([lo, hi], [y[i]] * 2, color=col, lw=0.8); ax.plot(m, y[i], "o", ms=3.0, color=col)
-        ax.set_xlabel(xl); ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
-        if k == "mean_ctrl_latency_ms": ax.set_xscale("log")
-        figstyle.panel_label(ax, l, x=-0.08)
+            m, lo, hi = S[f"{n}|nominal"][k]
+            hbar(ax, y[i], m, lo, hi, bar_color(n), h, left=left)
+        if logx: ax.set_xscale("log"); ax.set_xlim(left=left)
+        else: ax.set_xlim(left=min(0.0, min(S[f"{n}|nominal"][k][1] for n in names)))
+        if not logx and ax.get_xlim()[0] < 0: ax.axvline(0, color=figstyle.INK, lw=0.5)
+        ax.set_xlabel(xl); bar_axes(ax); figstyle.panel_label(ax, l, x=-0.08)
     for r in range(2): axs[r, 0].set_yticks(y); axs[r, 0].set_yticklabels([label(n) for n in names])
-    fig.tight_layout(w_pad=0.8, h_pad=1.0); figstyle.save(fig, os.path.join(FIG, "fig_extended_metrics"))
+    fig.tight_layout(w_pad=0.9, h_pad=1.2); figstyle.save(fig, os.path.join(FIG, "fig_extended_metrics"))
 
 
 def fig_timehistory(data, cond="nominal"):
@@ -275,21 +307,21 @@ def robust_rows():
 
 def fig_robustness(rows, cls):
     if not rows: return
-    names = ["SAC"] + cls; cols = [color("baseline")] + [figstyle.CLASSICAL_GREYS[i] for i in (0, 3)][:len(cls)]
+    names = ["SAC"] + cls; cols = [color("baseline")] + ["#4d4d4d", "#b3b3b3"][:len(cls)]
     labs = [label("baseline")] + [label(c) for c in cls]
     fig = plt.figure(figsize=(figstyle.DOUBLE, 3.6)); gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 0.7, 1.0], hspace=0.55, wspace=0.55)
     axr = fig.add_subplot(gs[:, 0]); axf = fig.add_subplot(gs[:, 1], sharey=axr)
     axe = fig.add_subplot(gs[0, 2]); axe2 = fig.add_subplot(gs[1, 2], sharex=axe)
-    conds = [(c, l) for c, l in ROBUST_LABELS if ("SAC", c) in rows]; y = np.arange(len(conds))[::-1]
-    off = np.linspace(0.18, -0.18, len(names))
+    conds = [(c, l) for c, l in ROBUST_LABELS if ("SAC", c) in rows]; y = np.arange(len(conds))[::-1].astype(float)
+    hb = 0.26; off = (np.arange(len(names)) - (len(names) - 1) / 2) * -hb
     for j, (n, col) in enumerate(zip(names, cols)):
         for i, (c, _) in enumerate(conds):
             if (n, c) not in rows: continue
             for ax, k, sc in ((axr, "rms_yaw_horizon", 1), (axf, "failure", 100)):
                 m, lo, hi = (v * sc for v in rows[(n, c)][k])
-                ax.plot([lo, hi], [y[i] + off[j]] * 2, color=col, lw=0.8); ax.plot(m, y[i] + off[j], "o", ms=2.8, color=col)
+                hbar(ax, y[i] + off[j], m, lo, hi, col, hb)
     axr.set_yticks(y); axr.set_yticklabels([l for _, l in conds]); axr.set_xlabel("RMS@H (rad/s)"); axr.set_xlim(left=0)
-    axf.set_xlabel("failure rate (%)"); axf.set_xlim(0, 100); plt.setp(axf.get_yticklabels(), visible=False)
+    axf.set_xlabel("failure rate (%)"); axf.set_xlim(0, 104); axf.set_xticks([0, 50, 100]); plt.setp(axf.get_yticklabels(), visible=False)
     for ax in (axr, axf): ax.spines["left"].set_visible(False); ax.tick_params(axis="y", length=0)
     for j, (n, col, lb) in enumerate(zip(names, cols, labs)):
         pts = [(v, rows[(n, f"env_{v:.2f}")]) for v in ENVELOPE if (n, f"env_{v:.2f}") in rows]
@@ -298,10 +330,10 @@ def fig_robustness(rows, cls):
         for ax, k, sc in ((axe, "rms_yaw_horizon", 1), (axe2, "failure", 100)):
             m = np.array([p[1][k][0] for p in pts]) * sc; lo = np.array([p[1][k][1] for p in pts]) * sc
             hi = np.array([p[1][k][2] for p in pts]) * sc
-            ax.fill_between(v, lo, hi, color=col, alpha=0.15, lw=0); ax.plot(v, m, "-o", color=col, ms=2.6, lw=1.0, label=lb)
+            ax.fill_between(v, lo, hi, color=col, alpha=0.15, lw=0); ax.plot(v, m, "-o", color=col, ms=2.4, lw=1.0, label=lb, clip_on=False)
     axe.plot(ENVELOPE, ENVELOPE, color=figstyle.MUTED, lw=0.6, ls="--", label="zero tracking")
     axe.set_ylabel("RMS@H (rad/s)"); axe2.set_ylabel("failure (%)"); axe2.set_xlabel(r"$|r_{\mathrm{ref}}|$ (rad/s)")
-    axe2.set_ylim(0, 100); axe.set_ylim(0, 1.25)
+    axe2.set_ylim(0, 100); axe.set_ylim(0, 1.25); axe.set_xlim(0.1, 0.95)
     axe.legend(loc="upper left", fontsize=6, ncol=2, handlelength=1.2, columnspacing=0.8, borderaxespad=0.1)
     plt.setp(axe.get_xticklabels(), visible=False)
     for ax, l, x in ((axr, "a", -0.62), (axf, "b", -0.08), (axe, "c", -0.38), (axe2, "d", -0.38)): figstyle.panel_label(ax, l, x=x)

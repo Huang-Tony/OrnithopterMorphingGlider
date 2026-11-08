@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Control-law readout of the distilled KAN student (revision R1).
 
-The KAN student (interpretability.py) and its SAC teacher are evaluated on synthetic observations: a typical
-steady-glide state (the median observation of the teacher's nominal evaluation episodes), in which only the commanded
-yaw rate r_ref and the measured yaw rate r are varied. Read out are the commanded differential sweep (yaw input) as a
-function of the yaw-rate error e = r_ref - r for r_ref in {-0.6, -0.3, 0, 0.3, 0.6} rad/s, and the commanded symmetric
-tip raise as a function of r_ref at zero error. This exposes the control law that the compact network implements
-(gain, saturation, feed-forward, shape scheduling) and how closely it follows the teacher.
+Read out on the states that the KAN student visits in its own closed-loop nominal evaluation episodes
+(eval_final/kan_student_nominal.npz). The SAC teacher is queried (deterministically) on exactly the same states, which
+are also the kind of states on which DAgger trains the student, so that every bin compares the two control laws on
+identical inputs. Read out: the commanded differential sweep 0.5 (a_Rx - a_Lx) in bins of the yaw-rate error
+e = r_ref - r for each reference r_ref in {-0.6, -0.3, 0, 0.3, 0.6} rad/s (bins with fewer than 15 samples omitted),
+and the mean symmetric tip raise 0.5 (a_Rz + a_Lz) per reference.
 Output: analysis/kan_readout.json, paper_figures/fig_kan.pdf|png
 """
 
@@ -25,8 +25,7 @@ from morphing_glider.environment.observation import OBS_IDX  # noqa: E402
 REFS = [-0.6, -0.3, 0.0, 0.3, 0.6]
 
 
-def binned(npz, rref_val, edges):
-    a = np.load(npz); A, O = a["action"], a["obs"]
+def binned(O, A, rref_val, edges):
     rr = O[..., OBS_IDX["yaw_ref"]]; r = O[..., OBS_IDX["omega_r"]]
     ok = np.isfinite(A[..., 0]) & (np.abs(rr - rref_val) < 1e-6)
     e = (rr - r)[ok]; ds = (0.5 * (A[..., 0] - A[..., 3]))[ok]
@@ -36,23 +35,34 @@ def binned(npz, rref_val, edges):
     return m, c
 
 
-def tip_raise_by_ref(npz):
-    a = np.load(npz); A, O = a["action"], a["obs"]; rr = O[..., OBS_IDX["yaw_ref"]]
-    ok = np.isfinite(A[..., 0]); sz = 0.5 * (A[..., 2] + A[..., 5])
+def tip_raise_by_ref(O, A):
+    rr = O[..., OBS_IDX["yaw_ref"]]; ok = np.isfinite(A[..., 0]); sz = 0.5 * (A[..., 2] + A[..., 5])
     return {str(v): float(np.mean(sz[ok & (np.abs(rr - v) < 1e-6)])) for v in REFS}
+
+
+def teacher_on(O, model_path):
+    """Deterministic teacher actions on the given raw observations (same normalization as in evaluation)."""
+    from evaluate import load_sac
+    ctrl = load_sac(model_path).ctrl; A = np.full(O.shape[:-1] + (6,), np.nan, dtype=np.float32)
+    ok = np.all(np.isfinite(O), axis=-1)
+    obs_n = ctrl._normalize_obs(O[ok].astype(np.float32))
+    act, _ = ctrl.model.predict(obs_n, deterministic=True)
+    A[ok] = act
+    return A
 
 
 def main():
     """On-distribution readout from the closed-loop evaluation episodes (nominal) of the KAN student and its teacher."""
     it = json.load(open(os.path.join(RUNS_DIR, "analysis", "interpretability.json"))); seed = int(it["teacher_seed"])
     EV = os.path.join(RUNS_DIR, "eval_final")
-    files = {"student": os.path.join(EV, "kan_student_nominal.npz"), "teacher": os.path.join(EV, f"sac_baseline_seed{seed}_nominal.npz")}
+    st = np.load(os.path.join(EV, "kan_student_nominal.npz")); O = st["obs"].astype(np.float64)
+    acts = {"student": st["action"], "teacher": teacher_on(O, os.path.join(RUNS_DIR, "models", f"baseline_seed{seed}.zip"))}
     edges = np.linspace(-0.6, 0.6, 13); mid = 0.5 * (edges[1:] + edges[:-1])
     out = {"doc": __doc__, "teacher_seed": seed, "bin_mid": mid.tolist(), "student": {}, "teacher": {}}
-    for name, f in files.items():
+    for name, A in acts.items():
         for rr in REFS:
-            m, c = binned(f, rr, edges); out[name][str(rr)] = {"diff_sweep": m, "n": c}
-        out[name]["tip_raise"] = tip_raise_by_ref(f)
+            m, c = binned(O, A, rr, edges); out[name][str(rr)] = {"diff_sweep": m, "n": c}
+        out[name]["tip_raise"] = tip_raise_by_ref(O, A)
     devs = [abs(a - b) for rr in REFS for a, b in zip(out["student"][str(rr)]["diff_sweep"], out["teacher"][str(rr)]["diff_sweep"])
             if a is not None and b is not None]
     out["mean_abs_student_teacher_diff_sweep_m"] = float(np.mean(devs)) if devs else None
@@ -74,18 +84,23 @@ def main():
     for i, rr in enumerate(REFS):
         col = cmap(i / (len(REFS) - 1))
         for name, ls, lw in (("student", "-", 1.0), ("teacher", ":", 0.8)):
-            y = np.array([np.nan if v is None else v for v in out[name][str(rr)]["diff_sweep"]])
-            ax.plot(mid, y, ls, color=col, lw=lw, marker="o" if name == "student" else None, ms=2.0,
-                    label=f"{rr:+.1f}" if name == "student" else None)
+            y = np.array([np.nan if v is None else v for v in out[name][str(rr)]["diff_sweep"]]); ok = np.isfinite(y)
+            ax.plot(mid[ok], y[ok], ls, color=col, lw=lw, marker="o" if name == "student" else None, ms=2.0,   # sparse bins skipped, not gapped
+                    label=f"{rr:+.1f}".replace("-", "\u2212") if name == "student" else None)
     ax.axhline(0, color=figstyle.LIGHT, lw=0.5); ax.axvline(0, color=figstyle.LIGHT, lw=0.5)
     ax.set_xlabel(r"yaw-rate error $e=r_\mathrm{ref}-r$ (rad/s)"); ax.set_ylabel("differential sweep (m)")
-    ax.legend(title=r"$r_\mathrm{ref}$ (rad/s)", fontsize=6, title_fontsize=6, loc="upper left", frameon=False)
+    ax.legend(title=r"$r_\mathrm{ref}$ (rad/s)", fontsize=6, title_fontsize=6, loc="lower right", frameon=False, ncol=2,
+              columnspacing=0.8, handlelength=1.4)
+    ax.text(0.02, 0.98, "solid: KAN student\ndotted: SAC teacher, same states", transform=ax.transAxes, fontsize=6, va="top",
+            color=figstyle.INK2)
     figstyle.panel_label(ax, "a", x=-0.2)
     ax = axs[1]; x = np.arange(len(REFS))
     ax.bar(x - 0.19, [out["teacher"]["tip_raise"][str(v)] for v in REFS], 0.36, color=figstyle.ENTITY["baseline"], lw=0, label="SAC teacher")
     ax.bar(x + 0.19, [out["student"]["tip_raise"][str(v)] for v in REFS], 0.36, color=figstyle.ENTITY["KAN"], lw=0, label="KAN student")
-    ax.set_xticks(x); ax.set_xticklabels([f"{v:+.1f}" for v in REFS]); ax.set_xlabel(r"$r_\mathrm{ref}$ (rad/s)")
-    ax.set_ylabel("mean symmetric tip raise (m)"); ax.legend(frameon=False, loc="upper center", fontsize=6)
+    ax.set_xticks(x); ax.set_xticklabels([f"{v:+.1f}".replace("-", "\u2212") for v in REFS]); ax.set_xlabel(r"$r_\mathrm{ref}$ (rad/s)")
+    ax.set_ylabel("mean symmetric tip raise (m)")
+    ax.legend(frameon=False, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2, fontsize=6, borderaxespad=0.2,
+              handlelength=1.0, handleheight=0.8)
     figstyle.panel_label(ax, "b", x=-0.3)
     figstyle.save(fig, os.path.join(RUNS_DIR, "paper_figures", "fig_kan"))
     print({k: out[k] for k in ("mean_abs_student_teacher_diff_sweep_m", "student_tip_raise_turn_minus_straight_m",
